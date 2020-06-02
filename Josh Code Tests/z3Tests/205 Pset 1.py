@@ -53,6 +53,7 @@ from z3 import *
   
 """
 Bringing in a direct copy of the SO code from:
+    https://stackoverflow.com/questions/13395391/z3-finding-all-satisfying-models
 
 """  
 
@@ -79,6 +80,32 @@ s.add(1 <= b)
 s.add(b <= 5)
 s.add(a >= 2*b)
 
-while s.check() == sat:
-  print (s.model())
-  s.add(Or(a != s.model()[a], b != s.model()[b]))
+# while s.check() == sat:
+#   print (s.model())
+#   s.add(Or(a != s.model()[a], b != s.model()[b]))
+  
+# Now let's test the idea with three int variables
+c = Int('c')
+s3 = Solver()
+
+# Adding constraints
+s3.add(1 <= a)
+s3.add(1 <= b)
+s3.add(1 <= c)
+
+s3.add(a <= 4)
+s3.add(b <= 4)
+s3.add(c <= 4)
+
+# Adding equation to solve
+s3.add(c > a+b)
+s3.check()
+print (s3.model())
+while s3.check() == sat:
+  print (s3.model())
+  s3.add(Or(a != s3.model()[a], b != s3.model()[b]), c != s3.model()[c])
+  
+  #Outputs 113, 214, but not 124
+
+
+

@@ -99,13 +99,16 @@ s3.add(c <= 4)
 
 # Adding equation to solve
 s3.add(c > a+b)
-s3.check()
-print (s3.model())
+
+# Adding in the Or constraint to disallow use of previous model values
 while s3.check() == sat:
   print (s3.model())
-  s3.add(Or(a != s3.model()[a], b != s3.model()[b]), c != s3.model()[c])
+  s3.add(Or( a != s3.model()[a], b != s3.model()[b], c != s3.model()[c]))
   
-  #Outputs 113, 214, but not 124
+  # Outputs all 4 possibilities correctly
+  
+  
+  
 
 
 

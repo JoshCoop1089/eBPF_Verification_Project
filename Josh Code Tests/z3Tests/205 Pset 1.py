@@ -21,7 +21,13 @@ Problem 4:
     2) a => s
     3) ~s => ~u
     
-    According to HW, U = True, A = False, S = True satisfies the given params.    
+    According to HW, U = True, A = False, S = True satisfies the given params.
+        But, my work on the HW wasn't to find all possible sats, just if there was 
+        a possible.
+        
+    Code below outputs u = false, a = false, s = false as the "answer"
+    
+    How to get it to output all possible satisfiable options?
 '''
 from z3 import *
 a, s, u = Bools('a s u')

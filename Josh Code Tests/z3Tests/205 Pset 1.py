@@ -96,6 +96,20 @@ Problem 4:
         This works for ints, using bounded limits (a <= 5 and such), 
         but for the booleans below it does some weirdness
 '''
+p, q = Bools('p q')
+simple = Solver()
+cond = Implies(p, q)
+simple.add(cond)
+
+count = 0
+
+print("\nThis should give all three viable solutions to satisfying p => q")
+while count < 10 and simple.check() == sat:
+  print (simple.model())
+  count += 1
+  simple.add(Or(p != simple.model()[p], q != simple.model()[q]))
+
+
 a, s, u = Bools('a s u')
 cond1 = Implies(u, Not(a))
 cond2 = Implies(a,s)
@@ -118,7 +132,7 @@ count = 0
 while count < 10 and equation.check() == sat:
   print (equation.model())
   count += 1
-  equation.add(Or(u != equation.model()[u], s != equation.model()[s], a != equation.model()[a]))
+  equation.add(And(u != equation.model()[u], s != equation.model()[s], a != equation.model()[a]))
   
   # If i use And(...) it will only produce the single FFF answer given previously.
   # If i use Or(...) it will produce an inifite loop of answers, but each answer will alternatively include

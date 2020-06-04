@@ -1,0 +1,27 @@
+In case you've never installed Python or a module before,
+this should help you get everything you need.
+
+1. Download and install python from python.org, speficially at https://www.python.org/downloads/
+ - current latest version is 3.8.3
+
+2. More recent versions of Python (I think 3.5 and later?) come installed with pip,
+   an installer for python modules. If you're using an old version, install pip.
+
+3. Make sure your PATH is set up correctly.
+ - If on Windows, click the windows button and search for "Edit the System Environment"
+ - This should bring you to the 'System Properties' screen, under the 'Advanced' tab.
+ - Press 'n' or look for the Environment Variables button.
+ - You should see two options for user variables and System variables.
+ - Under user variables, look for the PATH option.
+ - Double click on it and you should get a list of adresses.
+ - One should be "install_directory\Python###". This lets you run Python from command line.
+ - Another should be "install_directory\Python###\Scripts". This lets you run pip.
+
+4. To check if everything's set up correctly, try using "python --version" and "pip --version"
+   in the command line.
+
+5. If everything's set up, you can now install the Z3 module. You can type "pip install z3-solver"
+   in the command line, or go to the site https://pypi.org/project/z3-solver/#files and figure
+   it out from there.
+
+Now you should be ready to use the Z3 sovler in your python code!

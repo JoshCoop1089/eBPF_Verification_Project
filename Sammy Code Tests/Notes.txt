@@ -1,0 +1,115 @@
+Chapter 4: Lattice Theory
+=========================
+4.1: Sign Analysis
+ - Undecideability
+ - 5 possible return values: T, +, 0, -, {}
+   - T is the set of all integers
+   - '+' is a positive integer
+   - '0' is 0
+   - '-' is a negative integer
+   - {} is for a non-integer or pointer return
+
+ - T is most general, +/0/- are more specific, {} is most specific
+
+4.2: Lattices
+ - x |_| y means y is a lower bound for the set x, and flipping the cup switches it to an upper bound.
+ - Exercise 4.4 not clear
+ - Each lattice has a maximal point T and a minimal point ⊥
+   - In this context, maximal and minimal mean >= or <= rather than strictly > and <
+ - Height of a lattice is the length of the longest path from ⊥ to T
+
+4.3: Constructing Lattices
+ - Not clear how the x |_| y notation works anymore.
+   - Originally, it implied y is an element of x which is a lower bound.
+   - x |_| y = x U y makes no sense, as this implies that y is a distinct set from x
+
+   - In addition, applying this operation to all possible sets would produce A;
+     and we also know that when apply |_| like so you should end up with ⊥. However,
+     we have defined ⊥ = {} and T = A, so something seems wrong?
+
+ - We can see from the graphic on page 37 how this is supposed to work. However, taking the union
+   clearly moves you up the tree, rather than down. The minimal element should use the
+   intersection, and the maximal element notation should use the union.
+   - This does not change the fact that this seems to be an abuse of the notation's original meaning.
+
+ - Products of Lattices will have many pairs (S, S') such that neither S < S' nor S > S'
+
+ - StateSigns is a "map lattice" (?) and represents a given state of a program, and has a flat lattice for each variable (presumably?)
+ - ProgramSigns is n copies of StateSigns; one for each control point in the CFG
+
+ You can 'lift' lattices by adding a new bottom element
+
+
+4.4: Equations, Monotonicity, and Fixed-Points
+ - The definition of a 'map lattice' grows more important in determining how this works. It seems to be mapping
+   the variables at a given state to values, of course; however, it's not if it is a lattice. This further
+   complicates what structure ProgramSigns actually is.
+
+ - Monotone/order-preserving functions: If a < b, then f(a) < f(b) holds true for a function f, it is called monotone
+
+ - Fixed points are points in a monotone function f where f(x) = x
+ - Given a lattice with finite height L, each monotone function on that lattice has a minimal/least fixed point
+
+
+Chapter 5: Dataflow Analysis with Monotone Frameworks
+=====================================================
+Monotone Framework - a combination of a lattice and a space of monotone functions
+
+5.1: Sign Analysis, Revisited
+ - Unclear how JOIN(v) works.
+ - Abuse of the |_| notation?
+ - Uses 'abstract' continuously without really explaining why
+
+ - eval(sigma, X) = sigma(X), but sigma is a state and not a function, no?
+
+ - Unclear why +/+ = T, -/+ = T, +/- = T, and -/- = T. It seems like they should equal +, -, -, + respectively.
+ - For > and == operations, remember that in TIP 0 = false, and anything positive = true.
+
+
+
+5.2: Constant Propagation Analysis
+ - 
+
+5.3: Fixed-Point Variable Algorithms
+
+
+5.4: Live Variable Analysis:
+ - A variable is live if it's value will be read at some point before it is next overwritten completely
+   - Unclear if 'x += 5' will kill a variable or not
+   - Live variables are undecideable
+
+ - Point is to store minimal information possible, so only store live variables
+ - Desired answer is if a variable is live or not at a given point, false-negatives will be calling variables live when they're not.
+
+ - Use powerset of variables lattice. This makes sense, as you want to keep track of which variables are live.
+ - Most interesting state rule is for assignments:
+
+   X = E: [[v]] = JOIN(v) \ X U vars(E)
+
+   - JOIN(v) takes into account which variables will need to be read up ahead
+   - X is removed because it is set here; it does not matter if it was live or not before
+   - vars(E) takes into account which variables would be necessary to complete this equation; i.e. which variables
+     would need to be live for this statement to work.
+
+ - Feels a lot like Type Analysis
+
+
+5.5: Available Expression Analysis
+ - Conservative estimate: sets of available expressions may be too small (requiring re-computing values) but never too large (storing extra information?)
+
+ - Works similarly to live variable analysis
+ - Uses predecessors for forward propagation of expressions, rather than backwards propagation of variables to use
+ - Uses AND instead of OR because you can't rely on having an expression at a statement if there's a way to reach it without having the expression.
+
+
+5.6: Very Busy Expression Analysis
+ - Is a sort of reverse-available expression analysis that back-propagates expressions to see which will be recalculated  before changing
+ - While it might be more/less useful than the above, not immediately clear if it's useful for any different purpose
+ - Uses successors instead of predecessors, but otherwise the same as Available Expression Analysis
+
+ - Can use 'code hoisting' to move the computation of very busy expressions to their first occurance and change them into variable reads.
+
+5.7: Reaching Definitions Analysis
+ - Finds where the current values of variables were assigned
+ - Uses forwards propagation and union for variables; related to LVA (from 5.4) like AEA is to VBA
+ - Can construct def-use graph 

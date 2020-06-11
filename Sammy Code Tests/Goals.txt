@@ -1,0 +1,7 @@
+6/11:
+Given some eBPF programs
+ - Generate typing constraints
+ - Come up with a unification algorithm for the types of each of the registers
+   - All variables are pointers or integers
+
+https://www.coursera.org/learn/programming-languages, Week 5

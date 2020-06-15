@@ -5,3 +5,9 @@ Given some eBPF programs
    - All variables are pointers or integers
 
 https://www.coursera.org/learn/programming-languages, Week 5
+
+6/15:
+Range analysis:
+ - Read paper on range analysis of Mozilla Firefox
+ - Begin range analysis on the program
+ - Provide methodology for analysis

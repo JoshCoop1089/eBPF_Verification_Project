@@ -4,10 +4,30 @@ Given some eBPF programs
  - Come up with a unification algorithm for the types of each of the registers
    - All variables are pointers or integers
 
-https://www.coursera.org/learn/programming-languages, Week 5
+ https://www.coursera.org/learn/programming-languages, Week 5
 
 6/15:
 Range analysis:
  - Read paper on range analysis of Mozilla Firefox
- - Begin range analysis on the program
- - Provide methodology for analysis
+
+ https://cseweb.ucsd.edu/~dstefan/pubs/brown:2020:vera.pdf
+
+6/18:
+ - Make a small subset of BPF instructions to analyze (5-10)
+ - Model the interpreter's function with first order logic
+ - Take C code used for the instruction
+ - Model the verifier with first order logic
+
+ https://github.com/torvalds/linux/blob/master/kernel/bpf/verifier.c (~/verifier.c#L10876 and #L38)
+ https://github.com/torvalds/linux/blob/master/kernel/bpf/tnum.c
+ https://github.com/iovisor/bpf-docs/blob/master/eBPF.md
+ https://github.com/torvalds/linux/blob/master/kernel/bpf/core.c (#L1359)
+
+ from last week: https://github.com/cilium/cilium/blob/master/bpf/bpf_sock.c
+
+6/21:
+ - Focus on just maybe BPF_ADD and BPF_MOV.
+ - If you can translate to Z3, that's great
+ - Want to check if there are any concrete values which are valid inputs but don't produce a valid output
+
+ Consider installing better tools (cscope, ...)

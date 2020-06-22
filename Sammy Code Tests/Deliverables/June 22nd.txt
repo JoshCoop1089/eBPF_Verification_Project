@@ -11,7 +11,7 @@ Restrictions for BPF_ADD:
    - use of BPF_ADD: mask_to_left when adding a negative or subtracting a positive
 
  adjust_ptr_min_max_vals (https://github.com/torvalds/linux/blob/master/kernel/bpf/verifier.c#L5082)
-   > [sanitize_ptr_alu < 0]
+   -
 
  adjust_scalar_min_max_vals (https://github.com/torvalds/linux/blob/master/kernel/bpf/verifier.c#L5760)
    ???

@@ -25,9 +25,14 @@ Range analysis:
 
  from last week: https://github.com/cilium/cilium/blob/master/bpf/bpf_sock.c
 
-6/21:
+6/22:
  - Focus on just maybe BPF_ADD and BPF_MOV.
  - If you can translate to Z3, that's great
  - Want to check if there are any concrete values which are valid inputs but don't produce a valid output
 
  Consider installing better tools (cscope, ...)
+
+6/25:
+ - Translate code into Z3
+ - For helper functions, assume hard things are true
+ - For now, work only on range analysis. Ignore pointer out of bounds checks.

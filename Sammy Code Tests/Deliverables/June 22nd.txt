@@ -1,0 +1,58 @@
+Various BPF struct definitions:
+ https://elixir.bootlin.com/linux/latest/source/include/linux/bpf_verifier.h
+
+ > bpf_verifier_state - https://elixir.bootlin.com/linux/latest/source/include/linux/bpf_verifier.h#L204
+
+
+
+Restrictions for BPF_ADD:
+ 
+ retrieve_ptr_limit (https://github.com/torvalds/linux/blob/master/kernel/bpf/verifier.c#L4482
+   - use of BPF_ADD: mask_to_left when adding a negative or subtracting a positive
+
+ adjust_ptr_min_max_vals (https://github.com/torvalds/linux/blob/master/kernel/bpf/verifier.c#L5082)
+   -
+
+ adjust_scalar_min_max_vals (https://github.com/torvalds/linux/blob/master/kernel/bpf/verifier.c#L5760)
+   ???
+
+
+Restrictions for BPF_MOV:
+ 
+	check_alu_op (https://github.com/torvalds/linux/blob/master/kernel/bpf/verifier.c#L5999)
+		//the RETURN variable will be set to False when the program will run and return an error, True otherwise
+	   	//seems valid means that the instruction will be verified
+
+	   	L41bool = (code == BPF_X)
+	   	L42bool = L41bool && (imm != 0 || off != 0)
+	   	RETURN = RETURN && (!L42bool)
+
+	   	L48reach = L41bool && (!L42bool)
+	   	L48err = L48reach && check_reg_arg(env, src_reg, SRC_OP)
+	   	RETURN = RETURN && (!L48err)
+
+	   	L51bool = !L41bool
+	   	L52bool = L51bool && (src != 0 || off != 0)
+	   	RETURN = RETURN && (!L52bool)
+
+	   	L59err = check_reg_arg(env, dst, DST_OP_NO_MARK)
+	   	RETURN = RETURN && (!L59err)
+
+
+	   	L63bool = (code == BPF_X)
+	   	L67bool = L63bool && (code == BPF_ALU64)
+	   	//seems valid
+
+	   	L74bool = !L67bool
+	   	L76bool = L74bool && isPointer(env, src_reg)
+	   	RETURN = RETURN && (!L76bool)
+
+	   	L81bool = L74bool && !L76bool && (src_reg->type == SCALAR_VALUE)
+	   	//seems valid
+
+	   	L85bool = L74bool && !L76bool && !L81bool
+	   	//seems valid
+
+
+	   	L91bool = !L63bool
+	   	//seems valid

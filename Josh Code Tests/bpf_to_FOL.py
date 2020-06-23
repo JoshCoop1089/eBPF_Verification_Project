@@ -38,12 +38,20 @@ Simplified Register Recording:
         int_max (starts at 99)
         ptr_min (starts at 100)
         ptr_max (starts at 199)
+        
+        --Dunno if i'm going to need/use this idea, but keeping it in comments just in case--
         type  (will be either a 1 or a 2, to indicate int type (1) or ptr type (2))
         
     Any program command which changes the min/max value will be modelled by s.add(new constraint)
         but, in reality, we would need to figure out a way to change the constraint already loaded,
         since the internal tree would get gigantic if we keep adding on extraneous nodes to cover 
         int_max changing from 99, to 98, to 97 and so on.
+        
+        
+****** Big Note! **********
+I'm not sure how to handle multiple assignments to the same register over a period of time.
+    Using the way I'm currently doing it, i would be adding multiple equivalence statements, which would
+    automatically make it unsat.  Current workaround will be resetting the instance every time we do an add/mov'
 
 """
 
@@ -79,6 +87,17 @@ is_Valid_Program = Bools("is_Valid_Program")
 
 s = Solver()
 
+# Setting proper ints for easy changing of baselines
+intMin = 0
+intMax = 99
+ptrMin = 100
+ptrMax = 199
+
+def check_And_Print_Model(s):
+    print(s.check())
+    if s.check() == sat:
+        print(s.model())
+        
 def resetToBasics(s):
     '''
     Function will clear all conditions added to the s solver, 
@@ -90,16 +109,16 @@ def resetToBasics(s):
     
     # Add the basic defined constraints
     # s.add(source_type == 1)
-    s.add(source_int_min == 0)
-    s.add(source_int_max == 99)
-    s.add(source_ptr_min == 100)
-    s.add(source_ptr_max == 199)
+    s.add(source_int_min == intMin)
+    s.add(source_int_max == intMax)
+    s.add(source_ptr_min == ptrMin)
+    s.add(source_ptr_max == ptrMax)
     
     # s.add(destination_type == 1)
-    s.add(destination_int_min == 0)
-    s.add(destination_int_max == 99)
-    s.add(destination_ptr_min == 100)
-    s.add(destination_ptr_max == 199)
+    s.add(destination_int_min == intMin)
+    s.add(destination_int_max == intMax)
+    s.add(destination_ptr_min == ptrMin)
+    s.add(destination_ptr_max == ptrMax)
     
     # Logic about the internal values and min/max
     s.add(source_int_max >= source_int_min)
@@ -120,20 +139,69 @@ def resetToBasics(s):
     return s
 
 # Initialization of model for sat check
-s = resetToBasics(s)
-print(s.check())
-if s.check() == sat:
-    print(s.model())
+# s = resetToBasics(s)
+# check_And_Print_Model(s)
 
 # Now we start messing around with the model, should make model unsat
-s.add(source_ptr_value == 300)
-print(s.check())
-if s.check() == sat:
-    print(s.model())
+# s.add(source_ptr_value == 300)
+# check_And_Print_Model(s)
+
     
 # Checking to see if reset filters out the above unsat
-s = resetToBasics(s)
-print(s.check())
-if s.check() == sat:
-    print(s.model())
+# s = resetToBasics(s)
+# check_And_Print_Model(s)
 
+    
+# Setting the values of a register
+def set_Register_Int_Values(s, value, reg):
+    if(reg == 's'):
+        # Checking against the current bounds of the register, will force an unsat if broken
+        # I don't think I actually need this, as s.add of a value outside of the bounds will break the other logic!
+        # if (value > intMax or value < intMin):
+        #     return s.add(False)
+        s.add(source_int_value == value)    
+    elif(reg == 'd'):
+        # if (value > destination_int_max or value < destination_int_min):
+        #     return s.add(False)
+        s.add(destination_int_value == value)
+        
+    return s
+
+def set_Register_Ptr_Values(s, value, reg):
+    if(reg == 's'):
+        # if (value > source_ptr_max or value < source_ptr_min):
+        #     return s.add(False)
+        s.add(source_ptr_value == value)
+    elif(reg == 'd'):
+        # if (value > destination_ptr_max or value < destination_ptr_min):
+        #     return s.add(False)
+        s.add(destination_ptr_value == value)
+    
+    return s
+    
+        
+#Trying to define the bpf_add function
+def int_add(s):
+    # Prototype would be dst += src
+    # How do you extract the values from source and dest ints...
+    value = source_int_value + destination_int_value
+    
+    # This failed the first test (where is was just set_reg by itself, because the d_int_val had two competing settings)
+    s = resetToBasics(s)
+    s = 
+    s = set_Register_Int_Values(s, value, 'd')
+    
+    # s = update_register_bounds(s, "int", value)
+    return s
+
+s = set_Register_Int_Values(s, 1, 's')
+s = set_Register_Int_Values(s, 2, 'd')
+check_And_Print_Model(s)
+
+s = int_add(s)
+check_And_Print_Model(s)
+
+
+
+#bpf_mov
+#pointer arithmatic

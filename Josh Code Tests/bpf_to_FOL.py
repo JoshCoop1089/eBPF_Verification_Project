@@ -20,8 +20,8 @@ In bpf_check, it has to follow the following logical route:
         
 Ok, this is getting insane, simplify first to get the hang of z3 with register changes...
 
-        
-
+"""
+"""       
 Round 2!
 Simplified Register Recording:
     2 distinct types of register:
@@ -53,7 +53,7 @@ from z3 import *
     # int_value and ptr_value will be the two variables we check as our "inputs"
     # if we have a value for these two which would put it out of the range, will force a false
     
-source_type = Int("source_type")
+# source_type = Int("source_type")
 
 source_int_min = Int("source_int_min")
 source_int_max = Int("source_int_max")
@@ -63,7 +63,7 @@ source_ptr_min = Int("source_ptr_min")
 source_ptr_max = Int("source_ptr_max")
 source_ptr_value = Int("source_ptr_value")
 
-destination_type = Int("destination_type")
+# destination_type = Int("destination_type")
 
 destination_int_min = Int("destination_int_min")
 destination_int_max = Int("destination_int_max")
@@ -75,31 +75,65 @@ destination_ptr_value = Int("destination_ptr_value")
 
 # Dunno what I'm going to do with this yet, or if it is even needed.
 #  Can we simply use the unsat return to indicate a bad program input?
-is_Valid_Program = Bool("is_Valid_Program")
+is_Valid_Program = Bools("is_Valid_Program")
 
 s = Solver()
 
-# Add the basic defined constraints
-s.add(source_type == 1)
-s.add(source_int_min == 0)
-s.add(source_int_max == 99)
-s.add(source_ptr_min == 100)
-s.add(source_ptr_max == 199)
-s.add(source_int_value >= source_int_min)
-s.add(source_int_value <= source_int_max)
-s.add(source_ptr_value >= source_ptr_min)
-s.add(source_ptr_value <= source_ptr_max)
+def resetToBasics(s):
+    '''
+    Function will clear all conditions added to the s solver, 
+        and reset it to a set of basic logical and limiting factors.
+    Will allow for quick and clean baseline changes
+    '''
+    # Clear all the added conditions in Solver s
+    s.reset()
+    
+    # Add the basic defined constraints
+    # s.add(source_type == 1)
+    s.add(source_int_min == 0)
+    s.add(source_int_max == 99)
+    s.add(source_ptr_min == 100)
+    s.add(source_ptr_max == 199)
+    
+    # s.add(destination_type == 1)
+    s.add(destination_int_min == 0)
+    s.add(destination_int_max == 99)
+    s.add(destination_ptr_min == 100)
+    s.add(destination_ptr_max == 199)
+    
+    # Logic about the internal values and min/max
+    s.add(source_int_max >= source_int_min)
+    s.add(source_ptr_max >= source_ptr_min)
+    s.add(source_int_value >= source_int_min)
+    s.add(source_int_value <= source_int_max)
+    s.add(source_ptr_value >= source_ptr_min)
+    s.add(source_ptr_value <= source_ptr_max)
+    
+    s.add(destination_int_max >= destination_int_min)
+    s.add(destination_ptr_max >= destination_ptr_min)
+    s.add(destination_int_value >= destination_int_min)
+    s.add(destination_int_value <= destination_int_max)
+    s.add(destination_ptr_value >= destination_ptr_min)
+    s.add(destination_ptr_value <= destination_ptr_max)
+    
+    # Now we have a clean s without any added conditions
+    return s
 
-s.add(destination_type == 1)
-s.add(destination_int_min == 0)
-s.add(destination_int_max == 99)
-s.add(destination_ptr_min == 100)
-s.add(destination_ptr_max == 199)
-s.add(destination_int_value >= destination_int_min)
-s.add(destination_int_value <= destination_int_max)
-s.add(destination_ptr_value >= destination_ptr_min)
-s.add(destination_ptr_value <= destination_ptr_max)
-
+# Initialization of model for sat check
+s = resetToBasics(s)
 print(s.check())
-print(s.model())
+if s.check() == sat:
+    print(s.model())
+
+# Now we start messing around with the model, should make model unsat
+s.add(source_ptr_value == 300)
+print(s.check())
+if s.check() == sat:
+    print(s.model())
+    
+# Checking to see if reset filters out the above unsat
+s = resetToBasics(s)
+print(s.check())
+if s.check() == sat:
+    print(s.model())
 

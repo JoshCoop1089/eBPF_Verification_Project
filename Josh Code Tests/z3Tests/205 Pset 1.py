@@ -15,6 +15,8 @@ from z3 import *
 
 a = Int('a')
 b = Int('b')
+test = Bool("test")
+
 
 """
 This part is saying that 1<= a,b <=5, and it wants to give every value which satisfies a >= 2b
@@ -35,6 +37,7 @@ s.add(a <= 5)
 s.add(1 <= b)
 s.add(b <= 5)
 s.add(a >= 2*b)
+s.add(test == (a > b + 3))
 
 print("Solving all possible solutions for a >= 2b, with 1 <= a,b <= 5")
 while s.check() == sat:

@@ -81,10 +81,6 @@ destination_ptr_min = Int("destination_ptr_min")
 destination_ptr_max = Int("destination_ptr_max")
 destination_ptr_value = Int("destination_ptr_value")
 
-# Dunno what I'm going to do with this yet, or if it is even needed.
-#  Can we simply use the unsat return to indicate a bad program input?
-is_Valid_Program = Bools("is_Valid_Program")
-
 s = Solver()
 
 # Setting proper ints for easy changing of baselines
@@ -93,12 +89,14 @@ intMax = 99
 ptrMin = 100
 ptrMax = 199
 
-def check_And_Print_Model(s):
+def check_And_Print_Model(s, changes = ""):
+    print("\n\nChecking new model based on recent changes")
+    print("Changes were: " + changes)
     print(s.check())
     if s.check() == sat:
         print(s.model())
         
-def resetToBasics(s):
+def reset_To_Basics(s):
     '''
     Function will clear all conditions added to the s solver, 
         and reset it to a set of basic logical and limiting factors.
@@ -139,7 +137,7 @@ def resetToBasics(s):
     return s
 
 # Initialization of model for sat check
-# s = resetToBasics(s)
+# s = reset_To_Basics(s)
 # check_And_Print_Model(s)
 
 # Now we start messing around with the model, should make model unsat
@@ -148,33 +146,25 @@ def resetToBasics(s):
 
     
 # Checking to see if reset filters out the above unsat
-# s = resetToBasics(s)
+# s = reset_To_Basics(s)
 # check_And_Print_Model(s)
 
     
 # Setting the values of a register
 def set_Register_Int_Values(s, value, reg):
+    
     if(reg == 's'):
-        # Checking against the current bounds of the register, will force an unsat if broken
-        # I don't think I actually need this, as s.add of a value outside of the bounds will break the other logic!
-        # if (value > intMax or value < intMin):
-        #     return s.add(False)
         s.add(source_int_value == value)    
     elif(reg == 'd'):
-        # if (value > destination_int_max or value < destination_int_min):
-        #     return s.add(False)
         s.add(destination_int_value == value)
         
     return s
 
 def set_Register_Ptr_Values(s, value, reg):
+    
     if(reg == 's'):
-        # if (value > source_ptr_max or value < source_ptr_min):
-        #     return s.add(False)
         s.add(source_ptr_value == value)
     elif(reg == 'd'):
-        # if (value > destination_ptr_max or value < destination_ptr_min):
-        #     return s.add(False)
         s.add(destination_ptr_value == value)
     
     return s
@@ -184,24 +174,114 @@ def set_Register_Ptr_Values(s, value, reg):
 def int_add(s):
     # Prototype would be dst += src
     # How do you extract the values from source and dest ints...
-    value = source_int_value + destination_int_value
+    # Ahha! s.model()[varname]!
+    value = s.model()[source_int_value] + s.model()[destination_int_value]
+    old_source_int = s.model()[source_int_value]
     
-    # This failed the first test (where is was just set_reg by itself, because the d_int_val had two competing settings)
-    s = resetToBasics(s)
-    s = 
+    # This failed the first test (where is was just set_reg by itself without the reset before)
+        # because the d_int_val had two competing settings (ie d before, and d after the add)
+    s = reset_To_Basics(s)
+    
+    #Reset the src register to the previously held value for reasons?
+    s = set_Register_Int_Values(s, old_source_int, 's')
     s = set_Register_Int_Values(s, value, 'd')
     
     # s = update_register_bounds(s, "int", value)
     return s
 
+# Baby add checks!
+s = reset_To_Basics(s)
 s = set_Register_Int_Values(s, 1, 's')
 s = set_Register_Int_Values(s, 2, 'd')
-check_And_Print_Model(s)
+check_And_Print_Model(s, "setting s_int = 1, d_int = 2")
 
 s = int_add(s)
-check_And_Print_Model(s)
+check_And_Print_Model(s, "adding s_int to d_int, d_int should be 3")
+
+# Breaking int max bound on add check
+s = reset_To_Basics(s)
+s = set_Register_Int_Values(s, 99, 's')
+s = set_Register_Int_Values(s, 99, 'd')
+check_And_Print_Model(s, "setting s_int and d_int to 99")
+
+s = int_add(s)
+check_And_Print_Model(s, "adding s_int to d_int, should produce unsat since outside intMax range")
 
 
 
 #bpf_mov
-#pointer arithmatic
+#pointer arithmetic
+def pointer_Offset(s, offset):
+    '''
+    Changing dst register ptr value based on some defined offset
+
+    Parameters
+    ----------
+    s : z3 Solver
+    offset : int, defined outside function
+
+    Returns
+    -------
+    s : z3 Solver
+
+    '''
+    
+    new_ptr = s.model()[destination_ptr_value] + offset
+    s = reset_To_Basics(s)
+    s = set_Register_Ptr_Values(s, new_ptr, 'd')
+    return s
+
+# Checking whether ptr bounds work
+s = reset_To_Basics(s)
+s = set_Register_Ptr_Values(s, 100, 'd')
+check_And_Print_Model(s, "d_ptr = 100")
+
+s = pointer_Offset(s, 5)
+check_And_Print_Model(s, "pushing d_ptr up by 5, should give d_ptr = 105")
+
+# Checking negative offsets breaking ptr_min
+s = reset_To_Basics(s)
+s = set_Register_Ptr_Values(s, 100, 'd')
+check_And_Print_Model(s, "d_ptr = 100")
+
+s = pointer_Offset(s, -5)
+check_And_Print_Model(s, "pushing d_ptr down by 5, should give unsat, since below ptr_min")
+
+def pointer_pointer_Math(s):
+    '''
+    Since adding two pointers isn't logical, should return a int in the dst register
+    '''
+    s_ptr = s.model()[source_ptr_value]
+    d_ptr = s.model()[destination_ptr_value]
+    new_int = s_ptr+d_ptr
+    
+    s = reset_To_Basics(s)
+    s = set_Register_Ptr_Values(s, s_ptr, 's')
+    s = set_Register_Int_Values(s, new_int, 'd')
+    
+    return s
+
+# Have to change the internal bounds to allow for int number to not freak out on the add
+intMin = 100
+intMax = 199
+ptrMin = 0
+ptrMax = 99
+
+# Valid ptr/ptr addition to int
+s = reset_To_Basics(s)
+s = set_Register_Ptr_Values(s, 55, 's')
+s = set_Register_Ptr_Values(s, 55, 'd')
+check_And_Print_Model(s, "setting s_ptr and d_ptr to 55")
+
+s = pointer_pointer_Math(s)
+check_And_Print_Model(s, "adding two ptrs to get a new d_int value of 110, s_ptr still 55")
+
+# Invalid ptr/ptr addition
+s = reset_To_Basics(s)
+s = set_Register_Ptr_Values(s, 5, 's')
+s = set_Register_Ptr_Values(s, 5, 'd')
+check_And_Print_Model(s, "setting s_ptr and d_ptr to 5")
+
+s = pointer_pointer_Math(s)
+check_And_Print_Model(s, "adding two ptrs below int_min, so should be unsat")
+

@@ -34,7 +34,7 @@ check_alu_op (https://github.com/torvalds/linux/blob/master/kernel/bpf/verifier.
 			//seems valid
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-L41bool = (code == BPF_X)
+L41bool = (BPF_SRC == BPF_X)
 
 	L42bool = L41bool && (imm != 0 || off != 0)
 		RETURN = RETURN && (!L42bool)
@@ -51,8 +51,8 @@ L51bool = !L41bool
 L59err = check_reg_arg(env, dst, DST_OP_NO_MARK)
 	RETURN = RETURN && (!L59err)
 
-L63bool = (code == BPF_X)
-   	L67bool = L63bool && (code == BPF_ALU64)
+L63bool = (BPF_SRC == BPF_X)
+   	L67bool = L63bool && (BPF_CLASS == BPF_ALU64)
    		//seems valid
 
    	L74bool = L63bool && (!L67bool)

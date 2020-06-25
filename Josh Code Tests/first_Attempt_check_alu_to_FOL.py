@@ -68,8 +68,33 @@ static int check_alu_op(struct bpf_verifier_env *env, struct bpf_insn *insn)
 """
 from z3 import *
 
+s = Solver()
+
+# a = Int('a')
+
+# s.add(a < 10)
+# s.add(a > 1)
+# while s.check() == sat:
+#     print(s.model())
+#     s.add(a != s.model()[a])
+    
+b, c = Bools("b c")
+s.add(Implies(b, c))
+# s.add(c == True, b == False)
+print(s.check())
+count = 1
+while count < 5 and s.check() == sat:
+    print(s.model())
+    count += 1
+    s.add(
+        # Or(b != s.model()[b], 
+           c != s.model()[c])
+        # )
+
+
 #Defining useful variables, registers, and register limits
-"""Where are we getting our values from in the actual program?  Since we're going to assume
+"""
+Where are we getting our values from in the actual program?  Since we're going to assume
      this is a small scale look at a single alu_op command, there would be the register
      stucture which would have a current listing of the values stored, and any predefined
      min/max possibilities for the register, but is that a valid place to extract 
@@ -81,7 +106,7 @@ from z3 import *
      """
 
 #What logic binds the basic register together?
-'''Since we're doing this with the expectation of SSA for our variables,
+"""Since we're doing this with the expectation of SSA for our variables,
      is it ok to assume that whenever we need to calculate new bounds on a register,
      they'll always start off as u64_min, u64_max, and such, without any of the
      previously changed bounds?
@@ -91,7 +116,7 @@ from z3 import *
      
      Also, need to define the breaking points in the logic, every time it returns
      -EINVAL or err == 1
-     '''
+    """
 
     
 #What specific subfunctions are we going to have to check first, 

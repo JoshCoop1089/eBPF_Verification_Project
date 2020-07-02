@@ -113,3 +113,18 @@ Monotone Framework - a combination of a lattice and a space of monotone function
  - Finds where the current values of variables were assigned
  - Uses forwards propagation and union for variables; related to LVA (from 5.4) like AEA is to VBA
  - Can construct def-use graph 
+
+
+6/29:
+=====
+Automatic Program Verification
+
+Each function has a precondition and postcondition.
+
+Say we have a function f which has a precondition P and postcondition (phi). Let's say f can be split into 3 parts: a block of code A, a loop B, and a block of code C.
+
+C's postcondition must be (phi). Then you can compute its precondition backwards using predicate transformal. For example, say (phi): y > 0, and C: y = x + 5. Then, the precondition must be x > -5. This is the weakest precondition of C, or wp(C).
+
+Each loop can have a loop-invariant 'i'. This is a statement or set of statements that is true at the beginning of the loop, at the end of the loop, and after every individual iteration of the loop. In other words, if you want it as a postcondition you can use it as a precondition. You can use an SMT solver to check if i -> wp(C) for all inputs. You can also restrict i and create a wp(B).
+
+In this way you can back-propagate postconditions into preconditions and come up with P.

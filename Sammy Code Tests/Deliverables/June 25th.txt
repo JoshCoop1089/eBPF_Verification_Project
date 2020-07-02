@@ -1,45 +1,11 @@
 check_alu_op (https://github.com/torvalds/linux/blob/master/kernel/bpf/verifier.c#L5999)
-		//the RETURN variable will be set to False when the program will run and return an error, True or False otherwise
-	   	//seems valid means that the instruction will be verified
 
-	   	L41bool = (code == BPF_X)
-		   	L42bool = L41bool && (imm != 0 || off != 0)
-		   		RETURN = RETURN && (!L42bool)
-
-		   	L48err = L41bool && (!L42bool) && check_reg_arg(env, src_reg, SRC_OP)
-		   		RETURN = RETURN && (!L48err)
-
-	   	L51bool = !L41bool
-		   	L52bool = L51bool && (src != 0 || off != 0)
-		   		RETURN = RETURN && (!L52bool)
-
-	   	L59err = check_reg_arg(env, dst, DST_OP_NO_MARK)
-	   		RETURN = RETURN && (!L59err)
-
-	   	L63bool = (code == BPF_X)
-		   	L67bool = L63bool && (code == BPF_ALU64)
-		   		//seems valid
-
-		   	L74bool = L63bool && (!L67bool)
-			   	L76bool = L74bool && isPointer(env, src_reg)
-			   		RETURN = RETURN && (!L76bool)
-
-			   	L81bool = L74bool && !L76bool && (src_reg->type == SCALAR_VALUE)
-			   		//seems valid
-
-			   	L85bool = L74bool && !L76bool && !L81bool
-			   		//seems valid
-
-		L91bool = !L63bool
-			//seems valid
-
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 L41bool = (BPF_SRC == BPF_X)
 
 	L42bool = L41bool && (imm != 0 || off != 0)
 		RETURN = RETURN && (!L42bool)
 
-		new syntax: L42bool -> !RETURN
+		//new syntax: L42bool -> !RETURN
 
 	L48err = L41bool && (!L42bool) && check_reg_arg(env, src_reg, SRC_OP)
 		RETURN = RETURN && (!L48err)

@@ -107,11 +107,11 @@ while solver.check() == sat:
     print (m)
   
   solver.add(Or(
-                src != solver.model()[src],
-                off != solver.model()[off],
-                imm != solver.model()[imm],
-                #bpf_src != m[bpf_src],
-                #bpf_class != m[bpf_class],
+                src != m[src],
+                off != m[off],
+                imm != m[imm]
+                #bpf_src != m[bpf_src]
+                #bpf_class != m[bpf_class]
                 #is_ptr != m[is_ptr]
                 ))
 

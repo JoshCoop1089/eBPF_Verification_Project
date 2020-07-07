@@ -26,12 +26,13 @@ s.add(register_list[2][0] == 15)
 s.add(register_list[3][0] == 15)
 
 # Add Test 1: Add register 0 and 1 (0x7 + 0x8 = 0xF, 15 stored in r1_1)
-s, register_list = add_two_registers(0, 1, s, register_list, 1) 
+s, register_list = add_two_registers(0, 1, s, register_list, 1, register_bit_width) 
 check_and_print_model(s, register_list, "Test 1: Single add, no overflow")
 
 # Add Test 2: Add register 2 and 3 (0xF + 0xF = 0xD because of forced 4 bit width)
-                    # this test should fail due to UGE constraint, but the list should still be updated)
-s, register_list = add_two_registers(2, 3, s, register_list, 2)     
+    # this test should fail due to UGE constraint, but the list should still be updated
+    # with entries for test 1 (r1_1), and for test 2(r3_1))
+s, register_list = add_two_registers(2, 3, s, register_list, 2, register_bit_width)     
 check_and_print_model(s, register_list, "Test 2: Single add, with overflow")
     
 
@@ -40,7 +41,7 @@ s, register_list = clear_solver_reset_register_history(s, number_of_registers, r
 s.add(register_list[0][0] == 1)
 s.add(register_list[1][0] == 1)
 for i in range(5):
-    s, register_list = add_two_registers(0, 1, s, register_list, i+1) 
+    s, register_list = add_two_registers(0, 1, s, register_list, i+1, register_bit_width) 
     
 check_and_print_model(s, register_list, "Test 3: Multiple adds, no overflow")
 
@@ -51,8 +52,8 @@ s, register_list = clear_solver_reset_register_history(s, number_of_registers, r
 s.add(register_list[0][0] == 3)
 s.add(register_list[1][0] == 1)
 for i in range(7):
-    s, register_list = add_two_registers(0, 1, s, register_list, i+1) 
-check_and_print_model(s, register_list, "Test 4a: Multiple adds, with overflow, no error checks")
+    s, register_list = add_two_registers(0, 1, s, register_list, i+1, register_bit_width) 
+check_and_print_model(s, register_list, "Test 4a: Multiple adds, with overflow, no error checks, should include up to r1_7")
 
     
 # Test 4b:  First round of changes to add function, will try to have program stop and report an error
@@ -61,12 +62,12 @@ s, register_list = clear_solver_reset_register_history(s, number_of_registers, r
 s.add(register_list[0][0] == 3)
 s.add(register_list[1][0] == 1)
 for i in range(1,8):
-    s, register_list, instruction_counter = add_two_registers_v2(0, 1, s, register_list, i) 
+    s, register_list, instruction_counter = add_two_registers_v2(0, 1, s, register_list, i, register_bit_width) 
     if (instruction_counter < 0):
         print("\n\nModel becomes unsat after instruction: " + str(instruction_counter*-1))
         print("Printing the valid model up to, but not including, the broken instruction")
         break
-check_and_print_model(s, register_list, "Test 4b: Multiple adds, with overflow, error checks")
+check_and_print_model(s, register_list, "Test 4b: Multiple adds, with overflow, error checks, should include up to r1_4")
 
 # Redo Tests 1-3 with v2 add function
 s, register_list = clear_solver_reset_register_history(s, number_of_registers, register_bit_width)
@@ -79,12 +80,12 @@ s.add(register_list[3][0] == 15)
 
 # Add Test 1: Add register 0 and 1 (0x7 + 0x8 = 0xF, 15 stored in r1_1)
     # No changes due to v2Add
-s, register_list, instruction_counter = add_two_registers_v2(0, 1, s, register_list, 1) 
+s, register_list, instruction_counter = add_two_registers_v2(0, 1, s, register_list, 1, register_bit_width) 
 check_and_print_model(s, register_list, "Test 1v2: Single add, no overflow")
 
 # Add Test 2: Add register 2 and 3 (0xF + 0xF = 0xD because of forced 4 bit width)
     # Changes due to v2Add: This test should return just the list of the 4 starting register values
-s, register_list, instruction_counter = add_two_registers_v2(2, 3, s, register_list, 2) 
+s, register_list, instruction_counter = add_two_registers_v2(2, 3, s, register_list, 2, register_bit_width) 
 check_and_print_model(s, register_list, "Test 2v2: Single add, with overflow")
 print("This test should return just the list of the 4 starting register values, and the changes due to test 1")    
     
@@ -95,6 +96,6 @@ s, register_list = clear_solver_reset_register_history(s, number_of_registers, r
 s.add(register_list[0][0] == 1)
 s.add(register_list[1][0] == 1)
 for i in range(5):
-    s, register_list, instruction_counter = add_two_registers_v2(0, 1, s, register_list, i+1) 
+    s, register_list, instruction_counter = add_two_registers_v2(0, 1, s, register_list, i+1, register_bit_width) 
     
 check_and_print_model(s, register_list, "Test 3v2: Multiple adds, no overflow")

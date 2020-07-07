@@ -138,7 +138,7 @@ def clear_solver_reset_register_history(solver, numRegs, regBitWidth):
     return solver, reg_list
 
 
-def add_two_registers(source_reg, destination_reg, solver, reg_history, instruction_counter):
+def add_two_registers(source_reg, destination_reg, solver, reg_history, instruction_counter, register_bit_width):
     """
     Purpose: Given two registers, add their values together and output new constraints to the solver
     
@@ -163,6 +163,9 @@ def add_two_registers(source_reg, destination_reg, solver, reg_history, instruct
         
     instruction_counter: Type(int)
         Which instruction of the program is currently being executed, allows for tracing of problematic function calls
+        
+    register_bit_width: Type(int)
+        How large the registers should be
 
     Returns
     -------
@@ -185,11 +188,11 @@ def add_two_registers(source_reg, destination_reg, solver, reg_history, instruct
     reg_history[d_r].append(BitVec("r"+str(d_r) + "_" + str(instruction_counter), register_bit_width))
     
     #Adding the two registers, and including the overflow constraint
-    s.add(reg_history[d_r][d_l] == reg_history[d_r][d_l-1] + reg_history[s_r][s_l-1])
-    s.add(UGE(reg_history[d_r][d_l], reg_history[d_r][d_l-1]))
+    solver.add(reg_history[d_r][d_l] == reg_history[d_r][d_l-1] + reg_history[s_r][s_l-1])
+    solver.add(UGE(reg_history[d_r][d_l], reg_history[d_r][d_l-1]))
     return solver, reg_history
 
-def add_two_registers_v2(source_reg, destination_reg, solver, reg_history, instruction_counter):
+def add_two_registers_v2(source_reg, destination_reg, solver, reg_history, instruction_counter, register_bit_width):
     """
     Purpose: Given two registers, add their values together and output new constraints to the solver
     
@@ -216,6 +219,9 @@ def add_two_registers_v2(source_reg, destination_reg, solver, reg_history, instr
         
     instruction_counter: Type(int)
         Which instruction of the program is currently being executed, allows for tracing of problematic function calls
+    
+    register_bit_width: Type(int)
+        How large the registers should be
 
     Returns
     -------

@@ -14,10 +14,8 @@ s = Solver()
 #Eventually these values will all be defined by user input to the command line
 number_of_registers = 4
 register_bit_width = 4
-# number_of_program_commands = 4
 
 s, register_list = clear_solver_reset_register_history(s, number_of_registers, register_bit_width)
-# print(register_list)
 
 # Arbitrary test values for checking add function
 s.add(register_list[0][0] == 7)
@@ -64,8 +62,6 @@ s.add(register_list[1][0] == 1)
 for i in range(1,8):
     s, register_list, instruction_counter = add_two_registers_v2(0, 1, s, register_list, i, register_bit_width) 
     if (instruction_counter < 0):
-        print("\n\nModel becomes unsat after instruction: " + str(instruction_counter*-1))
-        print("Printing the valid model up to, but not including, the broken instruction")
         break
 check_and_print_model(s, register_list, "Test 4b: Multiple adds, with overflow, error checks, should include up to r1_4")
 

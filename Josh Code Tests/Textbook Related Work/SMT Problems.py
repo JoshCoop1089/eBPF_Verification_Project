@@ -3,19 +3,12 @@
 Created on Sun Jun 28 14:57:26 2020
 
 @author: joshc
+Code 
 """
 
 
 from z3 import *
 
-s = Solver()
-a = BitVec("a", 16)
-b = BitVec("b", 16)
-s.add(a <= 10)
-s.add(b <= 10)
-s.add(a > b)
-s.check()
-print(s.model())
 
 x = Int('x')
 y = Int('y')

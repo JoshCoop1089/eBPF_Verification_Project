@@ -117,16 +117,16 @@ def check_and_print_model(s, register_list = "", changes = "", instruction_list 
         else:
             print(instruction_list[problem_flag])
             print("The last viable solution to the program before the problem instruction was:")
-    print(s.model())
+    # print(s.model())
         
     # Old code to support add v1, will probably just delete when i clean up add test suite
     
     # #Either the model is valid, or I want to see how far the history recorder went before it broke.
     # # printing the register list is a error check method for add, but is not required in add_v2
-    # if s.check() == sat:
-    #     print(s.model())
-    # else:
-    #     print(register_list)
+    if s.check() == sat:
+        print(s.model())
+    else:
+        print(register_list)
     print()
 
 def clear_solver_reset_register_history(solver, numRegs, regBitWidth):
@@ -163,6 +163,46 @@ def clear_solver_reset_register_history(solver, numRegs, regBitWidth):
                   for i in range(numRegs)]
     solver.reset()
     return solver, reg_list
+
+def create_register_list(numRegs, regBitWidth):
+    """
+    Purpose: Create the register history list used to hold all register changes 
+    for SSA naming and assignment scheme
+
+    Parameters
+    ----------
+    numRegs : TYPE: (int)
+        The number of registers the user wishes to model
+    regBitWidth : TYPE: (int)
+        How wide all the registers will be.
+        --Note--
+        Future updates should make the register size independent of this start 
+        function, and allow for on the fly reg changes since SSA allows for each register
+        to be created when neededbut that's a future me problem
+
+    Returns
+    -------
+    reg_list : Type(List of Lists of BitVec variables)
+        Clean slate to allow for a look at the progress of a new collection of bpf commands,
+        and their effects on register values
+
+    """
+    
+    """This creates a 2D List to hold all registers and any changes to their values,
+              and allow for growing sublists related to specific registers
+    
+    The initial state looks like [[r0_0], [r1_0], ..., [rNumRegs_0]], to hold the initial values of
+          each register, with each individual sublist able to be have future register changes appended
+          due to changes on that specific register's held values.
+          
+     The list will be expanded as specific program instructons make changes to certain registers,
+     but since it will only add one reg onto one sublist per instruction,
+     space complexity is O(numRegs + numInstructionsToProgram)
+     """
+          
+    reg_list = [[BitVec("r"+str(i) + "_0", regBitWidth)] for i in range(numRegs)]
+    
+    return reg_list
 
 def get_the_nums(reg_history, instruction_counter, register_bit_width, source_reg, destination_reg = 0):
     """
@@ -418,14 +458,14 @@ def and_two_registers(source_reg, destination_reg, solver, reg_history, instruct
 
     return solver, reg_history, instruction_counter
 
-def set_initial_values(source_reg, register_value, solver, instruction_counter, register_bit_width):
+def set_initial_values(source_reg, register_value, solver, reg_history, instruction_counter, register_bit_width):
     """
     Purpose: Force the solver to hold some initial value for a distinct register.
     
     Parameters
     ----------
     
-    source_reg: Type(z3 bitVec Variable)
+    source_reg: Type(int)
         Which register is being assigned a starting value
         
     register_value: Type(int)
@@ -445,9 +485,10 @@ def set_initial_values(source_reg, register_value, solver, instruction_counter, 
     solver: Type(z3 Solver Object)
         Stores all the FOL choices made so far, modified to hold the starting conditions of the specified register
     """
-    
+    s_r = reg_history[source_reg][-1]
     if register_value < 2 ** register_bit_width: 
-        solver.add(source_reg == register_value)
+        # print("hi")
+        solver.add(s_r == register_value)
     else:
         instruction_counter *= -1
     return solver, instruction_counter
@@ -455,10 +496,10 @@ def set_initial_values(source_reg, register_value, solver, instruction_counter, 
 def program_instruction_added(instruction, instruction_counter, solver, reg_history, register_bit_width):
     """
     Valid Keywords:
-        addU
-        addS (not yet implemented)
-        and
-        lshift
+        addU -- Add two unsigned values
+        addS (not yet implemented) -- Add two signed values
+        and -- bitwise and between two values
+        lshift -- Left Shift a value a certain amount
         
     Purpose: Allow for modular additions to the solver using limited keywords and typing time
 
@@ -509,24 +550,26 @@ def program_instruction_added(instruction, instruction_counter, solver, reg_hist
         
     # String Length is Correct, checking the individual tokens
     else:
-        source_reg = string_tokens[1]
-        
+        source_reg = int (string_tokens[1])
         # Initializing specific registers to values
         if string_tokens[0] == "init":
-            register_start_val = string_tokens[2]
-            solver, instruction_counter = set_initial_values(source_reg, register_start_val, solver, instruction_counter, register_bit_width)
+            register_start_val = int(string_tokens[2])
+            solver, instruction_counter = \
+                set_initial_values(source_reg, register_start_val, solver, reg_history, instruction_counter, register_bit_width)
         
         # Single Register Operations
         elif string_tokens[0] == "lshift":
-            shift_val = string_tokens[2]
+            shift_val = int(string_tokens[2])
             solver, reg_history, instruction_counter = left_shift_register_value(source_reg, shift_val, solver, reg_history, instruction_counter, register_bit_width)
 
         # Two Register Operations
         elif string_tokens[0] == "addU" or string_tokens[0] == "addS" or string_tokens[0] == "and":
-            destination_reg = string_tokens[2]
+            destination_reg = int(string_tokens[2])
             
             if string_tokens[0] == "addU":
-                solver, reg_history, instruction_counter = add_two_registers_unsigned(source_reg, destination_reg, solver, reg_history, instruction_counter, register_bit_width)
+                solver, reg_history, instruction_counter = \
+                add_two_registers_unsigned(source_reg, destination_reg, solver, 
+                                           reg_history, instruction_counter, register_bit_width)
             
             elif string_tokens[0] == "and":
                 solver, reg_history, instruction_counter = and_two_registers(source_reg, destination_reg, solver, reg_history, instruction_counter, register_bit_width)
@@ -537,11 +580,14 @@ def program_instruction_added(instruction, instruction_counter, solver, reg_hist
             
     return solver, instruction_counter, reg_history
 
-def execute_program(program_list, FOLFunction, reg_history):
+def execute_program(program_list, FOLFunction, reg_history, reg_bit_width):
 
     # Add instructions from the program list to the solver
     for instruction_number, instruction in enumerate(program_list):
-        FOLFunction, problem_flag, reg_history = program_instruction_added(instruction, instruction_number, FOLFunction, reg_history, reg_bit_width)
+        print("Attempting to combine solver with instruction #%s: %s"%(str(instruction_number), instruction))
+        FOLFunction, problem_flag, reg_history = \
+            program_instruction_added(instruction, instruction_number, FOLFunction, reg_history, reg_bit_width)
+        # check_and_print_model(FOLFunction, reg_history)
         
         # A specific instruction has caused an error in the solver, stop adding, and return
         # the bad instruction and the farthest the model got in finding solutions
@@ -555,4 +601,12 @@ def execute_program(program_list, FOLFunction, reg_history):
     check_and_print_model(FOLFunction, reg_history)
 
 def create_program():
+    num_Regs = 4
+    reg_bit_width = 4
+    reg_list = create_register_list(num_Regs,reg_bit_width)
+    s = Solver()
+    program_list =["init 0 1" , "init 1 1", "addU 0 1"]
     
+    execute_program(program_list, s, reg_list, reg_bit_width)
+    
+create_program()

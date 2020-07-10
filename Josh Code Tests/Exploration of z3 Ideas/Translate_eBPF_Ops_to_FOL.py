@@ -85,11 +85,8 @@ def check_and_print_model(s, register_list = [], instruction_list = []):
     register_list : Type(List of List of bitVec Variables)
         Holds the current history of changes to registers based on most recent model
 
-
     instruction_list : Type (List of Strings)
-        Holds all the instructions given to a specific model, either to be printed out,
-        or referenced in case of problematic instruction
-        
+        Holds all the instructions given to a specific model to be printed out
         
     Returns
     -------
@@ -104,40 +101,7 @@ def check_and_print_model(s, register_list = [], instruction_list = []):
     print("\nThe solver got as far as:")
     print(s.model())
     print()
-    """
-    Purpose: Reset solver, wipe register change history recorder
-
-    Parameters
-    ----------
-    solver : Type(z3 Solver Object)
-        Holds all current FOL considerations, but will be wiped and passed back out of function
-
-    numRegs : Type(int)
-        Specifies the length of the register_history list of lists
-
-    regBitWidth : Type(int)
-        Specifies the size of a BitVector variable in bits for the register history list
-
-    Returns
-    -------
-    solver : Type(z3 Solver Object)
-        A completely reset Solver, no constraints
-
-    reg_list : Type(List of Lists of BitVec variables)
-        Clean slate to allow for a look at the progress of a new collection of bpf commands,
-        and their effects on register values
-    """
-
-    # This creates a 2D List to hold all registers and any changes to their values,
-    #           and allow for growing sublists related to specific registers
-    # The initial state looks like [[r0_0], [r1_0], ..., [rNumRegs_0]], to hold the initial values of
-    #       each register, with each individual sublist able to be have future register changes appended
-    #       due to changes on that specific register's held values.
-    reg_list = [[BitVec("r"+str(i) + "_0", regBitWidth)]
-                  for i in range(numRegs)]
-    solver.reset()
-    return solver, reg_list
-
+    
 def create_register_list(numRegs, regBitWidth):
     """
     Purpose: Create the register history list used to hold all register changes 
@@ -456,7 +420,7 @@ def set_initial_values(source_reg, register_value, solver, reg_history, instruct
     solver: Type(z3 Solver Object)
         Stores all the FOL choices made so far, modified to hold the starting conditions of the specified register
     """
-    s_r = reg_history[source_reg][-1]
+    s_r = reg_history[source_reg][0]
     
     # Checking to make sure an input value will fit inside the chosen register
     if register_value < 2 ** register_bit_width: 
@@ -581,6 +545,7 @@ def execute_program(program_list, FOLFunction, reg_history, reg_bit_width):
     # Add instructions from the program list to the solver
     for instruction_number, instruction in enumerate(program_list):
         print("Attempting to combine solver with instruction #%s: %s"%(str(instruction_number), instruction))
+        
         FOLFunction, problem_flag, reg_history = \
             program_instruction_added(instruction, instruction_number, FOLFunction, reg_history, reg_bit_width)
         
@@ -592,6 +557,7 @@ def execute_program(program_list, FOLFunction, reg_history, reg_bit_width):
             print("\t-->  "+program_list[problem_flag] +"  <--")
             print("The last viable solution to the program before the problem instruction was:")
             break
+        
     check_and_print_model(FOLFunction, reg_history, program_list)
 
 def create_program(program_list = ""):
@@ -614,7 +580,7 @@ def create_program(program_list = ""):
     """
     
     # Define the number and size of the registers in the program
-    # Future update will try and allow for disctint register sizes and changing of reg sizes based on individual instructions
+    # Future update will try and allow for disctinct register sizes and changing of reg sizes based on individual instructions
     # Future update will change this to be defined by user input to cmd line
     num_Regs = 4
     reg_bit_width = 4

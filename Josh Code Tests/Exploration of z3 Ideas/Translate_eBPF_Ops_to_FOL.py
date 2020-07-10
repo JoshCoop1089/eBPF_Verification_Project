@@ -104,8 +104,6 @@ def check_and_print_model(s, register_list = [], instruction_list = []):
     print("\nThe solver got as far as:")
     print(s.model())
     print()
-
-def clear_solver_reset_register_history(solver, numRegs, regBitWidth):
     """
     Purpose: Reset solver, wipe register change history recorder
 
@@ -462,7 +460,6 @@ def set_initial_values(source_reg, register_value, solver, reg_history, instruct
     
     # Checking to make sure an input value will fit inside the chosen register
     if register_value < 2 ** register_bit_width: 
-        # print("hi")
         solver.add(s_r == register_value)
     else:
         instruction_counter *= -1
@@ -586,16 +583,11 @@ def execute_program(program_list, FOLFunction, reg_history, reg_bit_width):
         print("Attempting to combine solver with instruction #%s: %s"%(str(instruction_number), instruction))
         FOLFunction, problem_flag, reg_history = \
             program_instruction_added(instruction, instruction_number, FOLFunction, reg_history, reg_bit_width)
-        # check_and_print_model(FOLFunction, reg_history)
         
         # A specific instruction has caused an error in the solver, stop adding, and return
         # the bad instruction and the farthest the model got in finding solutions
         if problem_flag < 0:
             problem_flag *= -1
-            # print("The last attempted instruction caused a problem.")
-            # print("The problem instruction was:\n" \
-            #       + program_list[problem_flag])
-            # print("Displaying the model up to just before the instruction.")
             print("\nThe program encountered an error on instruction #%s"%problem_flag)
             print("\t-->  "+program_list[problem_flag] +"  <--")
             print("The last viable solution to the program before the problem instruction was:")
@@ -653,5 +645,3 @@ def create_program(program_list = ""):
         program_list =["init 0 1" , "init 1 3", "addU 0 1"]
     
     execute_program(program_list, s, reg_list, reg_bit_width)
-    
-# create_program()

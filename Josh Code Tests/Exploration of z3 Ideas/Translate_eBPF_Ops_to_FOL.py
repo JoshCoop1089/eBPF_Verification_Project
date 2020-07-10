@@ -75,7 +75,7 @@ bpf_left_shift:
 """
 from z3 import *
 
-def check_and_print_model(s, register_list = "", changes = "", instruction_list = "", problem_flag = 0):
+def check_and_print_model(s, register_list = [], instruction_list = []):
     """
     Parameters
     ----------
@@ -85,48 +85,24 @@ def check_and_print_model(s, register_list = "", changes = "", instruction_list 
     register_list : Type(List of List of bitVec Variables)
         Holds the current history of changes to registers based on most recent model
 
-    changes : TYPE(string)
-        Allows for descriptions of test cases. The default is "".
 
     instruction_list : Type (List of Strings)
         Holds all the instructions given to a specific model, either to be printed out,
         or referenced in case of problematic instruction
         
-    problem_flag : Type(int)
-        A return value from all functions indicating that an error has occured, will be
-        a positive number cooresponding to the instruction which caused the error
         
     Returns
     -------
     None.
     """
-    print("\n" + changes)
-    
-    print("The proposed program is: \n")
+    print("\nThe full program is:")
     for number, ins in enumerate(instruction_list):
         print (str(number) + ":\t" + ins)
         
-        
-    s.check()    
-    if not problem_flag:
-        print("The program completed, and found the following solution:")
-    else:
-        print("The program encountered an error on instruction%s"%problem_flag)
-        if problem_flag >= len(instruction_list):
-            print("How is this even possible? What?")
-        else:
-            print(instruction_list[problem_flag])
-            print("The last viable solution to the program before the problem instruction was:")
-    # print(s.model())
-        
-    # Old code to support add v1, will probably just delete when i clean up add test suite
+    s.check()   
     
-    # #Either the model is valid, or I want to see how far the history recorder went before it broke.
-    # # printing the register list is a error check method for add, but is not required in add_v2
-    if s.check() == sat:
-        print(s.model())
-    else:
-        print(register_list)
+    print("\nThe solver got as far as:")
+    print(s.model())
     print()
 
 def clear_solver_reset_register_history(solver, numRegs, regBitWidth):
@@ -343,9 +319,6 @@ def add_two_registers_unsigned(source_reg, destination_reg, solver, reg_history,
         # Special return value to tell the main test program that an error has occured
         instruction_counter *= -1
 
-        # print("\n\nModel becomes unsat after instruction: " + str(instruction_counter*-1))
-        # print("Printing the valid model up to, but not including, the broken instruction")
-
     return solver, reg_history, instruction_counter
     
 def left_shift_register_value(source_reg, shift_val, solver, reg_history, instruction_counter, register_bit_width):
@@ -486,6 +459,8 @@ def set_initial_values(source_reg, register_value, solver, reg_history, instruct
         Stores all the FOL choices made so far, modified to hold the starting conditions of the specified register
     """
     s_r = reg_history[source_reg][-1]
+    
+    # Checking to make sure an input value will fit inside the chosen register
     if register_value < 2 ** register_bit_width: 
         # print("hi")
         solver.add(s_r == register_value)
@@ -581,6 +556,30 @@ def program_instruction_added(instruction, instruction_counter, solver, reg_hist
     return solver, instruction_counter, reg_history
 
 def execute_program(program_list, FOLFunction, reg_history, reg_bit_width):
+    """
+    Purpose: Executes a given eBPF pretend program using limited keywords
+
+    Parameters
+    ----------
+    program_list : TYPE(List of Strings)
+        Using specific keyword strings, gives the instruction order for the program in question
+        
+    FOLFunction :  Type(z3 Solver Object)
+        Stores all the FOL choices that will be made, to be modified on a per instruction basis
+        
+    reg_history: Type(List of List of z3 bitVectors variables)
+        Holds all previous names for all registers in the program, used to allow for
+        SSA representation of register values.  Will be modified with new register name for whatever
+        comes out of the calculation, to be appended to the destination_reg sublist
+        
+    register_bit_width: Type(int)
+        Maximum size of the registers
+
+    Returns
+    -------
+    None.
+
+    """
 
     # Add instructions from the program list to the solver
     for instruction_number, instruction in enumerate(program_list):
@@ -593,20 +592,66 @@ def execute_program(program_list, FOLFunction, reg_history, reg_bit_width):
         # the bad instruction and the farthest the model got in finding solutions
         if problem_flag < 0:
             problem_flag *= -1
-            print("The last attempted instruction caused a problem.")
-            print("The problem instruction was:\n" \
-                  + program_list[problem_flag])
-            print("Displaying the model up to just before the instruction.")
+            # print("The last attempted instruction caused a problem.")
+            # print("The problem instruction was:\n" \
+            #       + program_list[problem_flag])
+            # print("Displaying the model up to just before the instruction.")
+            print("\nThe program encountered an error on instruction #%s"%problem_flag)
+            print("\t-->  "+program_list[problem_flag] +"  <--")
+            print("The last viable solution to the program before the problem instruction was:")
             break
-    check_and_print_model(FOLFunction, reg_history)
+    check_and_print_model(FOLFunction, reg_history, program_list)
 
-def create_program():
+def create_program(program_list = ""):
+    """
+    Purpose: Start up the ebpf program and see how far it can run.
+    
+    Future updates will changes the input structure to a commandline, user input for ease of use
+    
+    Parameters
+    ----------
+    
+    program_list : Type(List of Strings)
+        Using special keyword number string instructions, gives a list of the instructions to be attempted by the solver
+        If left blank, will use one of the built in test programs, as opposed to user input
+
+    Returns
+    -------
+    None.
+
+    """
+    
+    # Define the number and size of the registers in the program
+    # Future update will try and allow for disctint register sizes and changing of reg sizes based on individual instructions
+    # Future update will change this to be defined by user input to cmd line
     num_Regs = 4
     reg_bit_width = 4
+    
+    # Set up the inital list of registers, to be modified in execute_program
     reg_list = create_register_list(num_Regs,reg_bit_width)
     s = Solver()
-    program_list =["init 0 1" , "init 1 1", "addU 0 1"]
+    
+
+    """ All individual instructions are a single string of the form:
+        'keyword' 'source_register' 'destination_register, shift_val, or initial val'
+        
+        First keyword is a string identifying the instruction action (addU, and, lshift)
+        Second source_reg is an int to say which register will be modifing/contributing a value to the instruction
+        Third token is always an int, but its use depends on the first keyword
+        
+    The example program below cooresponds to the following sequence of instructions:
+        0) Set the inital value of register 0 to 1                  (init 0 1)
+        1) Set the inital value of register 1 to 3                  (init 1 3)
+        2) Add the unsigned value of register 0 into register 1,    (addU 0 1) 
+    
+            and leave the new value of register 1 as 4 (end result will have r1_2 = 4)
+        """   
+    
+    # Arbitrary program to test.  Using specific keyword and dual number pairs will act as ebpf instructions for execute program
+    # Future updates will change this to either have a built in example program, or user defined programs able to be added
+    if program_list == "":
+        program_list =["init 0 1" , "init 1 3", "addU 0 1"]
     
     execute_program(program_list, s, reg_list, reg_bit_width)
     
-create_program()
+# create_program()

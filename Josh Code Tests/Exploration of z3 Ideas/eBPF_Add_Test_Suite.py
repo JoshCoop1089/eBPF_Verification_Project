@@ -13,6 +13,10 @@ from Translate_eBPF_Ops_to_FOL import *
 # Using new program loader format to test solver method
 print("-"*20)
 
+# create_program default function test
+create_program()
+print("-"*20)
+
 # Setting the start values for tests 1 and 2
 ins_list = ["init 0 7", "init 1 8", "init 2 15", "init 3 15"]
 
@@ -29,7 +33,7 @@ print("-"*20)
 print("Test 3: 5 Consectutive adds on same register, no overflow\n")
 
 # Setting the start values for test 3
-ins_list = ["init 0 1", "init 1 1"]
+ins_list = ["init 0 1", "init 1 2"]
 
 # Creating the add instructions
 new_ins = ["addU 0 1" for _ in range(5)]

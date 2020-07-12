@@ -71,87 +71,7 @@ bpf_left_shift:
 """
 from z3 import *
 
-def check_and_print_model(s, instruction_list, program_flag):
-    """
-    Parameters
-    ----------
-    s : Type(z3 Solver Object)
-        Contains the current model to be evaluated and possibly returned
-
-    instruction_list : Type (List of Strings)
-        Holds all the instructions given to a specific model to be printed out
-        
-    program_flag : Type (int)
-        Gives the number of the last attempted instruction in the program
-    Returns
-    -------
-    None.
-    """
-    print("\nThe full program is:")
-    for number, ins in enumerate(instruction_list):
-        print (str(number) + ":\t" + ins)
-        
-    if s.check() == sat:
-        print("\nThe last instruction attempted was #%s:"%(abs(program_flag)))
-        if program_flag == (len(instruction_list) - 1):
-            print("Program successfully added all instructions")
-        else:
-            print("Program didn't successfully add all given instructions")
-        print(s.model())
-    else:
-        """Since we're forcing the main program executor to only pass solver objects 
-        which have executed the full program to a point where there is a solution, or 
-        stopped just before something caused an unsat to show up, getting to this branch
-        would mean you've let a bug slip through one of the instruction sub functions.  
-        
-        You should probably go find that bug."""
-        
-        print("You screwed something up if this ever gets printed")
-        
-    print()
-    
-def create_register_list(numRegs, regBitWidth):
-    """
-    Purpose: Create the register history list used to hold all register changes 
-    for SSA naming and assignment scheme
-
-    Parameters
-    ----------
-    numRegs : TYPE: (int)
-        The number of registers the user wishes to model
-        
-    regBitWidth : TYPE: (int)
-        How wide all the registers will be.
-        
-        --Note--
-        Future updates should make the register size independent of this start 
-        function, and allow for on the fly reg size changes since SSA allows for each register
-        to be created when neededbut that's a future me problem
-
-    Returns
-    -------
-    reg_list : Type(List of Lists of BitVec variables)
-        Clean slate to allow for a look at the progress of a new collection of bpf commands,
-        and their effects on register values
-
-    """
-    
-    """This creates a 2D List to hold all registers and any changes to their values,
-              and allow for growing sublists related to specific registers
-    
-    The initial state looks like [[r0_0], [r1_0], ..., [rNumRegs_0]], to hold the initial values of
-          each register, with each individual sublist able to be have future register changes appended
-          due to changes on that specific register's held values.
-          
-     The list will be expanded as specific program instructons make changes to certain registers,
-     but since it will only add one reg onto one sublist per instruction,
-     space complexity is O(numRegs + numInstructionsToProgram)
-     """
-          
-    reg_list = [[BitVec("r"+str(i) + "_0", regBitWidth)] for i in range(numRegs)]
-    
-    return reg_list
-
+# ---->  Helper Functions for all Operations  <----
 def get_the_nums(reg_history, instruction_counter, register_bit_width, source_reg, destination_reg = -1):
     """
     Purpose: Simplify getting of register names for operations
@@ -175,7 +95,7 @@ def get_the_nums(reg_history, instruction_counter, register_bit_width, source_re
 
     destination_reg: Type(int), optional
         Which register to take the second value from, and what sublist to append the
-        result of the computation to.  If used for one register operation, default value of 0
+        result of the computation to.  If used for one register operation, default value of -1
 
     Returns
     -------
@@ -219,84 +139,44 @@ def get_the_nums(reg_history, instruction_counter, register_bit_width, source_re
     
     return list_of_values, reg_history
 
-def add_two_registers_unsigned(source_reg, destination_reg, solver, reg_history, instruction_counter, register_bit_width):
+# ---->  Single Register Operations  <----
+def set_initial_values(source_reg, register_value, solver, reg_history, instruction_counter, register_bit_width):
     """
-    Purpose: Given two registers, add their values together and output new constraints to the solver
-
-    v2: Should a specific add cause an overflow, return the instruction counter to cause a break in main program execution
-
+    Purpose: Force the solver to hold some initial value for a distinct register.
+    
     Parameters
     ----------
+    
     source_reg: Type(int)
-        Which register to take the inital value from, referencing the last element in the
-        specific sublist of the reg_history list
-
-    destination_reg: Type(int)
-        Which register to take the second value from, and what sublist to append the
-        result of the computation to
-
+        Which register is being assigned a starting value
+        
+    register_value: Type(int)
+        Value being assigned to source_reg
+        
     solver: Type(z3 Solver Object)
-        Stores all the FOL choices made so far, will be modified due to requirments
-        of add and passed back out of function
-
-    reg_history: Type(List of List of z3 bitVectors variables)
-        Holds all previous names for all registers in the program, used to allow for
-        SSA representation of register values.  Will be modified with new register name for whatever
-        comes out of the calculation, to be appended to the destination_reg sublist
-   
+        Stores all the FOL choices made so far, will be modified to hold the starting conditions
+        
     instruction_counter: Type(int)
-        Which instruction of the program is currently being executed, allows for tracing of problematic function calls
+        Which instruction in the program is being attempted
 
     register_bit_width: Type(int)
-        How large the registers should be
-
+        Maximum size of the registers
+        
     Returns
     -------
-    solver:  Type(z3 Solver Object)
-        Modified to include the new value of the destination register, and a overflow check on the calculation
-
-    reg_history: Type(List of lists of BitVec variables)
-        Additional value appended to the destinaton_reg sublist holding the new value.
-
-    instruction_counter: Type(int)
-        This will always return the instruction value of the last correctly completed instruction.
-        In the event of an unsat solution, this return will force a check in the main program to halt continuned execution
-        by returning the problematic instruction as a negative int (there is a check in the main function for this return
-                                                                    always being positive)
-
+    solver: Type(z3 Solver Object)
+        Stores all the FOL choices made so far, modified to hold the starting conditions of the specified register
     """
-    #Quick variables to access specific indexes in the register history lists
-    # (ie, the most recent versions of the two registers involved in this add)
-    list_of_nums, reg_history = \
-        get_the_nums(reg_history, instruction_counter, register_bit_width, source_reg, destination_reg)
+    s_r = reg_history[source_reg][0]
     
-    #v2 Change to allow for rollback in event of problematic addition
-    """Does having this occur every time the instruction is called, even on valid
-    adds, somehow pollute the solver with unneeded checks?  Efficiency question for later."""
-    solver.push()
-
-    #Adding the two registers, and including the overflow constraint assuming unsigned ints in the register
-    # list_of_nums = [source_val, destination_old_val, destination_new_val]
-    solver.add(list_of_nums[2] == list_of_nums[1] + list_of_nums[0])
-    solver.add(UGE(list_of_nums[2], list_of_nums[1]))
-
-    """I assume this will be horribly inefficient on larger runs of this, but
-    this is my current thought for stopping the program
-    execution when it encounters a problem instruction"""
-
-    # v2 Change to always check a solution before returning to the main function
-    if solver.check() == unsat:
-        # Roll back the solver to a version before the problematic add instructions
-        solver.pop()
-
-        # Remove the register update because it causes a problem
-        del reg_history[destination_reg][-1]
-
-        # Special return value to tell the main test program that an error has occured
+    # Checking to make sure an input value will fit inside the chosen register
+    # Accounts for max unsigned possible, and min signed possible values for the specified register
+    if register_value < 2 ** register_bit_width and register_value >= (-1) * (2 ** (register_bit_width - 1)): 
+        solver.add(s_r == register_value)
+    else:
         instruction_counter *= -1
+    return solver, instruction_counter
 
-    return solver, reg_history, instruction_counter
-    
 def left_shift_register_value(source_reg, shift_val, solver, reg_history, instruction_counter, register_bit_width):
     """
     Purpose:  Model what occurs when you attempt a left shift on the value stored in source_reg
@@ -351,6 +231,193 @@ def left_shift_register_value(source_reg, shift_val, solver, reg_history, instru
         # this keeps breaking my solver attempts, so i'm going to leave it commented out for now.
         # solver.add(new_val >= LShR(new_val, shift_val))
 
+    return solver, reg_history, instruction_counter
+
+# ---->  Two Register Operations  <----
+def add_two_registers_unsigned(source_reg, destination_reg, solver, reg_history, instruction_counter, register_bit_width):
+    """
+    Purpose: Given two registers, add their values together and output new constraints to the solver
+
+    v2: Should a specific add cause an overflow, return the instruction counter to cause a break in main program execution
+
+    Parameters
+    ----------
+    source_reg: Type(int)
+        Which register to take the inital value from, referencing the last element in the
+        specific sublist of the reg_history list
+
+    destination_reg: Type(int)
+        Which register to take the second value from, and what sublist to append the
+        result of the computation to
+
+    solver: Type(z3 Solver Object)
+        Stores all the FOL choices made so far, will be modified due to requirments
+        of add and passed back out of function
+
+    reg_history: Type(List of List of z3 bitVectors variables)
+        Holds all previous names for all registers in the program, used to allow for
+        SSA representation of register values.  Will be modified with new register name for whatever
+        comes out of the calculation, to be appended to the destination_reg sublist
+   
+    instruction_counter: Type(int)
+        Which instruction of the program is currently being executed, allows for tracing of problematic function calls
+
+    register_bit_width: Type(int)
+        How large the registers should be
+
+    Returns
+    -------
+    solver:  Type(z3 Solver Object)
+        Modified to include the new value of the destination register, and a overflow check on the calculation
+
+    reg_history: Type(List of lists of BitVec variables)
+        Additional value appended to the destinaton_reg sublist holding the new value.
+
+    instruction_counter: Type(int)
+        This will always return the instruction value of the last correctly completed instruction.
+        In the event of an unsat solution, this return will force a check in the main program to halt continuned execution
+        by returning the problematic instruction as a negative int (there is a check in the main function for this return
+                                                                    always being positive)
+
+    """
+    #Quick variables to access specific indexes in the register history lists
+    # (ie, the most recent versions of the two registers involved in this add)
+    list_of_nums, reg_history = \
+        get_the_nums(reg_history, instruction_counter, register_bit_width, source_reg, destination_reg)
+    
+    #Allow for rollback in event of problematic addition
+    """Does having this occur every time the instruction is called, even on valid
+    adds, somehow pollute the solver with unneeded checks?  Efficiency question for later."""
+    solver.push()
+
+    #Adding the two registers, and including the overflow constraint assuming unsigned ints in the register
+    # list_of_nums = [source_val, destination_old_val, destination_new_val]
+    solver.add(list_of_nums[2] == list_of_nums[1] + list_of_nums[0])
+    solver.add(UGE(list_of_nums[2], list_of_nums[1]))
+
+    """I assume this will be horribly inefficient on larger runs of this, but
+    this is my current thought for stopping the program
+    execution when it encounters a problem instruction"""
+
+    #Always check a solution before returning to the main function
+    if solver.check() == unsat:
+        # Roll back the solver to a version before the problematic add instructions
+        solver.pop()
+
+        # Remove the register update because it causes a problem
+        del reg_history[destination_reg][-1]
+
+        # Special return value to tell the main test program that an error has occured
+        instruction_counter *= -1
+
+    return solver, reg_history, instruction_counter
+
+def add_two_registers_signed(source_reg, destination_reg, solver, reg_history, instruction_counter, register_bit_width):
+    """
+    Purpose: Add two register values together, treating the numbers as signed bitValues
+    
+    Parameters
+    ----------
+    source_reg: Type(int)
+        Which register to take the inital value from, referencing the last element in the
+        specific sublist of the reg_history list
+
+    destination_reg: Type(int)
+        Which register to take the second value from, and what sublist to append the
+        result of the computation to
+
+    solver: Type(z3 Solver Object)
+        Stores all the FOL choices made so far, will be modified due to requirments
+        of add and passed back out of function
+
+    reg_history: Type(List of List of z3 bitVectors variables)
+        Holds all previous names for all registers in the program, used to allow for
+        SSA representation of register values.  Will be modified with new register name for whatever
+        comes out of the calculation, to be appended to the destination_reg sublist
+   
+    instruction_counter: Type(int)
+        Which instruction of the program is currently being executed, allows for tracing of problematic function calls
+
+    register_bit_width: Type(int)
+        How large the registers should be
+
+    Returns
+    -------
+    solver:  Type(z3 Solver Object)
+        Modified to include the new value of the destination register, and a overflow check on the calculation
+
+    reg_history: Type(List of lists of BitVec variables)
+        Additional value appended to the destinaton_reg sublist holding the new value.
+
+    instruction_counter: Type(int)
+        This will always return the instruction value of the last correctly completed instruction.
+        In the event of an unsat solution, this return will force a check in the main program to halt continuned execution
+        by returning the problematic instruction as a negative int (there is a check in the main function for this return
+                                                                    always being positive)
+    """
+    #Quick variables to access specific indexes in the register history lists
+    # (ie, the most recent versions of the two registers involved in this add)
+    list_of_nums, reg_history = \
+        get_the_nums(reg_history, instruction_counter, register_bit_width, source_reg, destination_reg)
+    
+    #Allow for rollback in event of problematic addition
+    """Does having this occur every time the instruction is called, even on valid
+    adds, somehow pollute the solver with unneeded checks?  Efficiency question for later."""
+    solver.push()
+    
+    #Here there be dragons
+    #Adding the two registers, and including the overflow constraint assuming signed ints in the register
+    # list_of_nums = [source_val, destination_old_val, destination_new_val]
+    solver.add(list_of_nums[2] == list_of_nums[1] + list_of_nums[0])
+    
+    
+    """What does overflow mean:
+        src pos + dst pos --> dst_new >= dst_old
+            technically 7 is the largest positive in 4 bit 2's comp,
+            so 4 + 4 would overflow, 0100 + 0100 = 1000 (ie 4 + 4 = -8)
+        src pos dst neg --> 7 + -1 --> dst_new >= dst_old
+                        --> 1 + -8 also works as above
+        src neg, dst pos --> -1 + 7 --> dst_old > dst_new
+                        This one cannot be >= because if dst = 0, 
+                        then new cannot be equal to it since negs start at -1
+        src neg, dst neg --> -1 + -5 --> dst_old > dst_new
+        
+        So the breaking point is based on the sign of the src register (ie not the one being written into)
+        
+        sign(src) = pos -> (dst_new > dst_old)
+        Implies(a,b): a is src_val >= 0, b is dst_new > dst_old
+        sign(src) = neg -> (dst_new <= dst_old)
+        Implies(a,b): a is src_val < 0, b is dst_old >= dst new
+        """
+    # First attempt at signed overflow FOL considerations
+    # list_of_nums = [source_val, destination_old_val, destination_new_val]
+    
+    # Source_reg holds 0 or positive number in 2's complement
+    a = list_of_nums[0] >= 0
+    b = list_of_nums[2] > list_of_nums[1]
+    pos_overflow = Implies(a,b)
+    solver.add(pos_overflow)
+        
+    # Source_reg holds negative number in 2's complement
+    a = list_of_nums[0] < 0
+    b = list_of_nums[2] <= list_of_nums[1]
+    neg_overflow = Implies(a,b)
+    solver.add(neg_overflow)
+    
+    #Here ends dragons
+    
+    
+    #Always check a solution before returning to the main function
+    if solver.check() == unsat:
+        # Roll back the solver to a version before the problematic add instructions
+        solver.pop()
+
+        # Remove the register update because it causes a problem
+        del reg_history[destination_reg][-1]
+
+        # Special return value to tell the main test program that an error has occured
+        instruction_counter *= -1
+    
     return solver, reg_history, instruction_counter
 
 def and_two_registers(source_reg, destination_reg, solver, reg_history, instruction_counter, register_bit_width):
@@ -409,41 +476,87 @@ def and_two_registers(source_reg, destination_reg, solver, reg_history, instruct
 
     return solver, reg_history, instruction_counter
 
-def set_initial_values(source_reg, register_value, solver, reg_history, instruction_counter, register_bit_width):
+# ---->  Program Creation, Execution, and Display Operations  <----
+def check_and_print_model(s, instruction_list, program_flag):
     """
-    Purpose: Force the solver to hold some initial value for a distinct register.
-    
     Parameters
     ----------
-    
-    source_reg: Type(int)
-        Which register is being assigned a starting value
-        
-    register_value: Type(int)
-        Value being assigned to source_reg
-        
-    solver: Type(z3 Solver Object)
-        Stores all the FOL choices made so far, will be modified to hold the starting conditions
-        
-    instruction_counter: Type(int)
-        Which instruction in the program is being attempted
+    s : Type(z3 Solver Object)
+        Contains the current model to be evaluated and possibly returned
 
-    register_bit_width: Type(int)
-        Maximum size of the registers
+    instruction_list : Type (List of Strings)
+        Holds all the instructions given to a specific model to be printed out
         
+    program_flag : Type (int)
+        Gives the number of the last attempted instruction in the program
     Returns
     -------
-    solver: Type(z3 Solver Object)
-        Stores all the FOL choices made so far, modified to hold the starting conditions of the specified register
+    None.
     """
-    s_r = reg_history[source_reg][0]
-    
-    # Checking to make sure an input value will fit inside the chosen register
-    if register_value < 2 ** register_bit_width: 
-        solver.add(s_r == register_value)
+    print("\nThe full program is:")
+    for number, ins in enumerate(instruction_list):
+        print (str(number) + ":\t" + ins)
+        
+    if s.check() == sat:
+        print("\nThe last instruction attempted was #%s:"%(abs(program_flag)))
+        if program_flag == (len(instruction_list) - 1):
+            print("Program successfully added all instructions")
+        else:
+            print("Program didn't successfully add all given instructions")
+        print(s.model())
     else:
-        instruction_counter *= -1
-    return solver, instruction_counter
+        """Since we're forcing the main program executor to only pass solver objects 
+        which have executed the full program to a point where there is a solution, or 
+        stopped just before something caused an unsat to show up, getting to this branch
+        would mean you've let a bug slip through one of the instruction sub functions.  
+        
+        You should probably go find that bug."""
+        
+        print("You screwed something up if this ever gets printed")
+        
+    print()
+
+def create_register_list(numRegs, regBitWidth):
+    """
+    Purpose: Create the register history list used to hold all register changes 
+    for SSA naming and assignment scheme
+
+    Parameters
+    ----------
+    numRegs : TYPE: (int)
+        The number of registers the user wishes to model
+        
+    regBitWidth : TYPE: (int)
+        How wide all the registers will be.
+        
+        --Note--
+        Future updates should make the register size independent of this start 
+        function, and allow for on the fly reg size changes since SSA allows for each register
+        to be created when neededbut that's a future me problem
+
+    Returns
+    -------
+    reg_list : Type(List of Lists of BitVec variables)
+        Clean slate to allow for a look at the progress of a new collection of bpf commands,
+        and their effects on register values
+
+    """
+    
+    """This creates a 2D List to hold all registers and any changes to their values,
+              and allow for growing sublists related to specific registers
+    
+    The initial state looks like [[r0_0], [r1_0], ..., [rNumRegs_0]], to hold the initial values of
+          each register, with each individual sublist able to be have future register changes appended
+          due to changes on that specific register's held values.
+          
+     The list will be expanded as specific program instructons make changes to certain registers,
+     but since it will only add one reg onto one sublist per instruction,
+     space complexity is O(numRegs + numInstructionsToProgram)
+     """
+          
+    reg_list = [[BitVec("r"+str(i) + "_0", regBitWidth)] for i in range(numRegs)]
+    
+    return reg_list
 
 def program_instruction_added(instruction, instruction_counter, solver, reg_history, register_bit_width):
     """
@@ -529,6 +642,10 @@ def program_instruction_added(instruction, instruction_counter, solver, reg_hist
                 solver, reg_history, instruction_counter = \
                     add_two_registers_unsigned(source_reg, destination_reg, solver, reg_history, 
                                                instruction_counter, register_bit_width)
+            elif string_tokens[0] == "addS":
+                solver, reg_history, instruction_counter = \
+                    add_two_registers_signed(source_reg, destination_reg, solver, reg_history, 
+                                               instruction_counter, register_bit_width)
             
             elif string_tokens[0] == "and":
                 solver, reg_history, instruction_counter = \
@@ -587,6 +704,7 @@ def execute_program(program_list, FOLFunction, reg_history, reg_bit_width):
 def create_program(program_list = ""):
     """
     Purpose: Start up the ebpf program and see how far it can run.
+    Current Default Conditions is 4 registers, each with a bitWidth of 4
     
     Future updates will changes the input structure to a commandline, user input for ease of use
     

@@ -3,71 +3,41 @@
 Created on Mon Jul  6 16:03:04 2020
 
 @author: joshc
-"""
 
-
-"""
-Given a specific ebpf opcode, how do you take it and model it as an FOL equation
+Given a specific ebpf opcode/program, how do you take it and model it as an FOL equation
     to put into z3?
 
-First Thoughts:
-    set up bitvec variables to model the values held in a register
-    use size 4 bitvecs to test in beginning, can set bitvec size as a variable
-        to use different sizes in the future
-
-    All bitvecs (for now) will model unsigned values holding numbers representing floats, not pointers
-        Reasoning:
-            a) simpler to model, no odd sign extensions and shifts to think about at first
-            b) forces me to dig into the z3Py function database to find replacements for
-                the usual numerical operators, since those are all defined as signed operations
-
-Register Changes tracked over time:
-    set up a 2d list which is created based on number of registers needed
-        where every entry in first list will be a history tape for the specific changes to that register
-        ie -
-            register_list[0][0] is the inital state of r0
-            register_list[1][2] is the state of register r1 after a change was made to it in the 
-            second instruction of the program
-                ***This doesn't mean that two changes have been made, just that instruction 2 made a change on reg1
-                        
-                
-    This way, you can maintain a history of register changes, use each individual entry
-        as a new bitvec variable in the solver, and possibly trace back to a specific instruction
-        which caused a problem
-
-    Naming convention on printed output will be r0_0, r0_1, r0_2, ...
-        with incrementing values after the underscore indicating which instruction caused the change
-
-
-bpf_add:
-    assumptions:
-        adding two positive numbers together
-    inputs:
-        src register
-        dest register
-    requirments added to solver:
-        dst_new = src + dst
-        dst_new >= dst
-            this assumption should deal with the overflow problem,
-            since 0xF + 0xF = 0xD  in a 4 bit container (arbitrary chosen size
-            for ease of testing, not required by hardcoding), and since we're
-            limiting the size, we cannot have events like 0x3+0x11 = 0x4,
-            where dst_new would be more than dst_original, even with the overflow,
-            since the second number (0x11) wouldn't be allowed in our size 4 bitVec
-
-bpf_left_shift:
-    assumptions:
-        left shift value must be smaller than bit width of register
-    inputs:
-        single register
-    requirments for solver:
-        reg_new = reg_old << shift_val
-        register_bit_width > shift_val
-        reg_new >> shift_val <= reg_new
-            this one might get wonky depending on how i implemement the right shift,
-            need to find the unsigned right shift operator function
-
-
+General Organizational Notes:
+    
+    This program is designed to simplify testing efforts for eBPF to FOL translation efforts.
+    
+    It contains three major parts.
+    
+    1) Definition of individual eBPF to FOL functions
+        - These are the individual instruction sets allowed in the current program
+        -Currently, we have support for
+            -signed addition
+            -unsigned addition
+            -bitwise and
+            -left shifting a bit value
+            -setting a register to a specific value
+            
+    2) Program Loading and Execution
+        - create_program acts as a wrapper to allow for inputs of user defined program strings
+        
+        - execute_program goes through the string list, and attempts to add each instruction
+            to the main solver incrementally, while handling error conditions if an instruction fails
+            
+        -program_instruction_added does the manual work of parsing an individual instruction 
+            and applying the correct FOL constraints to the solver based on the instruction
+            
+    3) Interior Structures and Printing Functions
+        -check_and_print_model checks... and prints out the model.  It's astounding, i know
+        
+        -create_register_list sets up the main structure for holding the names of the registers
+            as we assign them into the solver.  It doesn't hold value information about them, 
+            it just allows us to track which instruction changes a specific register, and maintains
+            an ever increasing record which we use as reference variables for adding to the solver'
 """
 from z3 import *
 
@@ -108,13 +78,15 @@ def get_the_nums(reg_history, instruction_counter, register_bit_width, source_re
             problem has been encountered, then it will just return the original reg_history without alterations
 
     """
-    # Get the source values to be messed with
+    # Get the source register names to be used in the solver
     s_r = source_reg
     s_l = len(reg_history[s_r])
-    source_val = reg_history[s_r][s_l-1]
+    source_val = reg_history[s_r][s_l-1]        #Now holds a bitVec variable to be passed into the solver
     
     # Get the destinaton values
+    
     # For Single Register Operations, destination register is the source register
+    # Uses the default val from the function to indicate single reg operation
     if destination_reg == -1:
         d_r = s_r
         d_l = s_l
@@ -126,7 +98,7 @@ def get_the_nums(reg_history, instruction_counter, register_bit_width, source_re
         d_l = len(reg_history[d_r])
         destination_old_val = reg_history[d_r][d_l-1]
 
-    #Extending the destination register sublist to include the new updated register value
+    #Extending the destination register sublist to include the new register name
     # Previous if/else clause was to make this line work for one and two reg operations
     reg_history[d_r].append(BitVec("r"+str(d_r) + "_" + str(instruction_counter), register_bit_width))
     
@@ -142,7 +114,7 @@ def get_the_nums(reg_history, instruction_counter, register_bit_width, source_re
 # ---->  Single Register Operations  <----
 def set_initial_values(source_reg, register_value, solver, reg_history, instruction_counter, register_bit_width):
     """
-    Purpose: Force the solver to hold some initial value for a distinct register.
+    Purpose: Force the solver to hold some value for a distinct register.
     
     Parameters
     ----------
@@ -167,7 +139,12 @@ def set_initial_values(source_reg, register_value, solver, reg_history, instruct
     solver: Type(z3 Solver Object)
         Stores all the FOL choices made so far, modified to hold the starting conditions of the specified register
     """
-    s_r = reg_history[source_reg][0]
+    #If you're assigning a value to a register midway through a program it is 
+        # an instruction call, and needs a new SSA named register
+    if len(reg_history[source_reg]) != 1:
+        reg_history[source_reg].append(BitVec("r"+str(source_reg) + "_" + str(instruction_counter), register_bit_width))
+    
+    s_r = reg_history[source_reg][-1]
     
     # Checking to make sure an input value will fit inside the chosen register
     # Accounts for max unsigned possible, and min signed possible values for the specified register
@@ -532,7 +509,7 @@ def create_register_list(numRegs, regBitWidth):
         --Note--
         Future updates should make the register size independent of this start 
         function, and allow for on the fly reg size changes since SSA allows for each register
-        to be created when neededbut that's a future me problem
+        to be created when needed but that's a future me problem
 
     Returns
     -------
@@ -552,8 +529,21 @@ def create_register_list(numRegs, regBitWidth):
      The list will be expanded as specific program instructons make changes to certain registers,
      but since it will only add one reg onto one sublist per instruction,
      space complexity is O(numRegs + numInstructionsToProgram)
-     """
-          
+
+     Register Changes tracked over time:
+        register_list[0][0] is the inital state of r0
+        register_list[1][1] is the state of register r1 after a change was made to it
+        the Name stored in r_l[1][1] might be r1_3.  This would indicate that the first change made
+            on register 1 occured in the 3rd instruction of the program
+    ***This doesn't mean that two changes have been made, just that instruction 2 made a change on reg1
+                    
+    This way, you can maintain a history of register changes, use each individual entry
+        as a new bitvec variable in the solver, and possibly trace back to a specific instruction
+        which caused a problem
+
+    Naming convention on printed output will be r0_0, r0_1, r0_2, ...
+        with incrementing values after the underscore indicating which instruction caused the change
+    """      
     reg_list = [[BitVec("r"+str(i) + "_0", regBitWidth)] for i in range(numRegs)]
     
     return reg_list
@@ -753,3 +743,60 @@ def create_program(program_list = ""):
         program_list =["init 0 1" , "init 1 3", "addU 0 1", "lshift 1 1", "and 1 0"]
     
     execute_program(program_list, s, reg_list, reg_bit_width)
+    
+def get_eBPF_from_Outside_File():
+    """
+    How to auto get a bpf program from an input file: Musings of an inexperienced coder
+    
+    File inputs can be read as a string of characters, so need to identify specific
+        patterns which would always show up to indicate a general type of instruction, or
+        to show that a block of information is a combination of instructions.
+        
+    Since Python files using BCC use a block of precoded C code anyway, we can focus on ID'ing patterns in C.
+    
+    Looking at the code for get-rekt and the sock_examples from Srinivas' github, there is the 
+    
+        struct bpf_ins prog[] = { 
+    
+    block of code to indicate the start of what is holding the list of instructions, 
+        so we can focus on finding that.
+        
+    However, there might be variations in the name of the array being used to hold the info, but the 
+        "struct bpf_ins" portion would always be there, followed by some letters (prog in this example)
+        and then " = {", where there could be an unknown number of spaces in between the end of the name,
+        the equal sign and the left open curly brace.  Can just throw that in a regex and not make assumptions
+        about the code itself.  
+    
+    Could we assume the next instance of a } would be the end of the array?  Even if we cannot, we can just push
+        left brackets onto a stack and then pop them off when right brackets hit, and that'll tell us when we've
+        reached the end of the bpf_ins curly braces
+        
+    Next challenge: Identifying an individual instruction
+        MASSIVE ASSUMPTION TIME!
+        All bpf instruction macros in C start with "BPF_" and to make an array in C, you have a comma space 
+        seperation, so we could use something like 
+        
+        string.split(", BPF_") 
+        
+        to tokenize our specific input string that we found after using the bpf_ins {} search.
+        
+    Now assuming our instructions have all be split up properly (what a wonderful fantasy world I live in)
+        we have to identify what each individual instruction is supposed to do.
+        
+    Since these are all functions, they have the format of function_name followed by (parameter1, parameter2, ...).  
+    So we could again split everything before the parens and everything after, and ID the wording in front of 
+        the parens against some hardcoded list of eBPF functions, and then use that to match what all the 
+        comma seperated parameters after the parentheses are suppseded to be doing.
+        
+    We would need to account for any kind of BPF_ token which doesn't fall under the usual list, like BPF_MAP_GET
+        in the get-rekt program, which is a shortcut to a defined function elsewhere in the file.
+        
+        Can we assume that #define would precede any user made functions in this kind of file?
+            
+    We would need to scan through the imported instruction list, identify any keywords which didn't have a
+        definition in our "official" dictionary of eBPF, scan back through the file for a #define BPF_whatever
+        and then somehow extract the specific BPF instructions from after that point until 
+                                                                                     
+                                                                                    
+    """
+    return 0

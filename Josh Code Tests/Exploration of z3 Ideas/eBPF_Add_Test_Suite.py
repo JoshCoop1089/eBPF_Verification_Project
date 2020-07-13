@@ -148,3 +148,14 @@ ins_list.extend(new_ins)
 create_program(ins_list)
 print("-"*20)
 
+print("Test 13: Funky Test Time.  Assigning a value to a register after calculations had been done\n")
+
+ins_list = ["init 0 -5", "init 1 -5", "init 2 3"]
+new_ins = ["addS 2 2", "addS 0 2", "init 2 13"]
+ins_list.extend(new_ins)
+
+create_program(ins_list)
+print("-"*20)
+
+
+

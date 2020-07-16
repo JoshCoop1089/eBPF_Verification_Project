@@ -6,17 +6,6 @@ Created on Wed Jul 15 14:29:11 2020
 """
 
 from z3 import *
-from Translate_eBPF_Ops_to_FOL import *
-def BPF_JMP_IMM (opcode, source, value, offset):
-    
-    """
-    How to define a branching instruction:
-        The opcode would tell how the function would interact with the source, compared
-        to the input value, but for simplicity at the moment, we're only going to model JNE for now
-    IE v1 for this function will simply check source_val == value, if yes, it will execute the 
-        next instruction in the instruction list, otherwise it will send out a signal to skip
-    
-    """
     
 
 class Register_Info:
@@ -616,22 +605,135 @@ def create_program(program_list = ""):
     
     execute_program(program_list, s, reg_list, reg_bit_width)
     
-create_program()
+# create_program()
 
-# s = Solver()
-# regBitWidth = 4
-# numRegs = 4
-# reg_list = [[Register_Info("r"+str(i) + "_0", regBitWidth)] for i in range(numRegs)]
-# for i in reg_list:
-#     print(i[0].name)
-#     print(i[0].reg_type)
+# Sign Extension Test
+def sign_extend_to_larger_register(input_number, input_bit_width, register_bit_width):
+    """
+    Given an input number I with a bit width of W, how do you sign extend it to fit into a
+        register with a bit width of R, how do you guarantee the number in the extended register
+        has the same value as the original input number?
+        
+        Try Number 1:
+            Take -1 in the bit width of the input value
+            Leftshift -1 out to the size of the register
+            Bitwise OR the shifted -1 with the input value
+            
+            This should be the sign extended version of the original number
+        
+        Example:
+            Input Val = 1100 (bit size of 4)
+            Output Register has bit size of 8
+            
+            Make -1 in bit size 4:
+                1111
+            Left shift -1 by (reg_bit_width - input_bit_width) ie by 8-4 = 4
+                11110000
+            Bitwise Or of 11110000 with 00001100
+                1111 1100
+            
+            That is -4 in 8 bit signed
+    """
+    neg_one = 2**(input_bit_width) - 1
+    neg_one <<= (register_bit_width - input_bit_width)
+    output_val = input_number | neg_one
+    return output_val
+
+#Exit Instruction inside a program
+def exit_from_program(solver, instruction_counter):
     
-# a = BitVecVal( 0xF, 8)
-# s.add(reg_list[0][-1].name == 4)
-# s.add(reg_list[1][-1].name == 9)
-# s.add(reg_list[2][-1].name == 65)
-# s.add(reg_list[3][-1].name == 0xF)
-# s.add(reg_list[3][-1].name == -1)
-# print(s.check())
-# if s.check():
-#     print(s.model())
+    # Using the main instruction counter to show which specific exit instruction is 
+    # causing the output, in case the program has multiples
+    exit_ins = Bool('exit_' + str(instruction_counter))
+    solver.add(exit_ins == True)
+    
+    # Special Return Value to show that the program is hitting an internal exit,
+        # but is still completing normally
+    instruction_counter = 0
+    
+    return solver, instruction_counter
+    
+def BPF_JMP_IMM (opcode, source, value, offset):
+    
+    """
+    How to define a branching instruction:
+        The opcode would tell how the function would interact with the source, compared
+        to the input value, but for simplicity at the moment, we're only going to model JNE for now
+    IE v1 for this function will simply check source_val == value, if yes, it will execute the 
+        next instruction in the instruction list, otherwise it will send out a signal to skip
+    
+    How to deal with skipping instructions:
+        Return instruction_counter value that is more than what is currently being looked at in main for loop
+        have a continue check before instruction addition, to see if problem_flag variable is more than
+        instruction counter from main enumerate function.
+        
+        This way, if the jump says skip 5 instructions, and that specific JNE is instruction 3, 
+        
+        problem_flag would return as 9, and then every time the loop executed, and 
+        instruction_counter was less than problem_flag, it would skip that specific loop, and continue
+    """
+    
+    
+# Example changes to execute program:
+    
+def execute_program_new(program_list, FOLFunction, reg_history, reg_bit_width):
+    # Set the var before to not cause problems on first ins
+    problem_flag = 0                    
+    
+    # Add instructions from the program list to the solver
+    for instruction_number, instruction in enumerate(program_list):
+        
+        # This should allow skipping forward in the ins list without adding skipped instructions
+        if problem_flag >= instruction_number:
+            continue
+        
+        print("Attempting to combine solver with instruction #%s: %s"%(str(instruction_number), instruction))
+        
+        # Problem_flag usually returns as the instruction counter if everything went ok, so on the next loop,
+        # it will automatically be below instruction_counter.
+        
+        # Special problem_flag returns:
+            # 0 --> an early exit instruction was executed
+            # problem_flag < 0 --> an instruction caused an unsat solution
+            # problem_flag > instruction_counter --> a jump instruction is pushing the list forward
+        FOLFunction, reg_history, problem_flag = \
+            program_instruction_added(instruction, instruction_number, FOLFunction, reg_history, reg_bit_width)
+        
+        # A specific instruction has caused an error in the solver, stop adding, and return
+        # the bad instruction and the farthest the model got in finding solutions
+        if problem_flag < 0:
+            print("\nThe program encountered an error on instruction #%s"%abs(problem_flag))
+            print("\t-->  " + program_list[abs(problem_flag)] + "  <--")
+            print("The last viable solution before the problem instruction is shown below:")
+            break
+        
+    check_and_print_model(FOLFunction, program_list, problem_flag)
+    
+    
+
+
+
+
+# Code tests for ideas formalized in above functions
+input_num = 12  # -4 in 4 bit signed
+output_num = sign_extend_to_larger_register(input_num, 4, 8)
+print(output_num)  #should be 252 in 8 bit unsigned (representing -4 in 8 bit signed)
+
+
+s = Solver()
+regBitWidth = 4
+numRegs = 4
+reg_list = [[Register_Info("r"+str(i) + "_0", regBitWidth)] for i in range(numRegs)]
+for i in reg_list:
+    print(i[0].name)
+    print(i[0].reg_type)
+    
+a = BitVec('a', 8)
+s.add(reg_list[0][-1].name == 4)
+s.add(reg_list[1][-1].name == 9)
+s.add(reg_list[2][-1].name == 65)
+s.add(reg_list[3][-1].name == 0xC)
+s.add(a == 0xFC)
+print(s.check())
+if s.check():
+    print(s.model())

@@ -46,18 +46,18 @@ def create_register_list(numRegs, regBitWidth):
 
     Returns
     -------
-    reg_list : Type(List of Lists of BitVec variables)
+    reg_list : Type(List of Lists of Register_Info objects)
         Clean slate to allow for a look at the progress of a new collection of bpf commands,
-        and their effects on register values
+        and their effects on register values.
 
     """
     
-    """This creates a 2D List to hold all registers and any changes to their values,
+    """This creates a 2D List to hold info about the names, bit widths, and types of registers,
               and allow for growing sublists related to specific registers
     
-    The initial state looks like [[r0_0], [r1_0], ..., [rNumRegs_0]], to hold the initial values of
-          each register, with each individual sublist able to be have future register changes appended
-          due to changes on that specific register's held values.
+    The initial state looks like [[r0_0], [r1_0], ..., [rNumRegs_0]], to hold the initial named objects
+        containing info about each register, with each individual sublist able to be have future register
+        changes appended due to changes on that specific register's held values.
           
      The list will be expanded as specific program instructons make changes to certain registers,
      but since it will only add one reg onto one sublist per instruction,
@@ -587,7 +587,7 @@ def create_program(program_list = ""):
     # Future update will try and allow for disctinct register sizes and changing of reg sizes based on individual instructions
     # Future update will change this to be defined by user input to cmd line
     num_Regs = 4
-    reg_bit_width = 4
+    reg_bit_width = 6
     
     # Set up the inital list of registers and z3 solver, to be modified in execute_program
     reg_list = create_register_list(num_Regs,reg_bit_width)
@@ -605,8 +605,8 @@ def create_program(program_list = ""):
         0) Set the inital value of register 0 to 1               (init 0 1)   /* r0 = 1*/
         1) Set the inital value of register 1 to 3               (init 1 3)   /* r1 = 3*/
         2) Add the unsigned value of register 0 into register 1  (addU 0 1)   /* r1 += r0*/
-        3) Left shift the value of register 1 by 1               (lshift 1 1) /* r1 <<= 1 */
-        4) And the values in register 0 and 1, and store in r0   (and 1 0)    /* r0 = r0 & r1 */
+        3) Set the initial value of register 2 to -1             (init 2 -1)  /* r2 = -1*/
+        4) Add the signed value of register 2 into register 1    (addS 2 1)   /* r1 += r2 */
         """   
     
     # Arbitrary program to test.  Using specific keyword and dual number pairs will act as ebpf instructions for execute program

@@ -37,6 +37,7 @@ from z3 import *
 class Register_Info:
     def __init__(self, name, reg_bit_size,  reg_type = ""):
         self.name = BitVec(name, reg_bit_size)
+        self.reg_name = name 
         
         # Not using this yet, because just dealing with arithmetic on numbers, not pointers
         # self.reg_type = reg_type
@@ -48,7 +49,7 @@ class Register_Info:
 class Helper_Info:
     def __init__(self, reg_bit_width):
         self.reg_bit_width = reg_bit_width
-        # self.solver_object = Solver()
+        self.solver_object = Solver()
         
         # On creation, the following aren't used
         self.register_history = [[]]
@@ -72,20 +73,23 @@ class Helper_Info:
     def __str__(self):
         print("The current contents of the helper_bundle are:")
         print("\tRegister Bit Width: %d"%self.reg_bit_width)
-        print("\tTotal Number of Registers: %d"%self.num_regs)
         print("\tThe Current Instruction Number is: %d"%self.instruction_number)
         print("\tProblem Flag's Value is': %d"%self.problem_flag)
         print("\tThe register history looks like: \n")
-        print(self.register_history)
-        
+        r_h = self.register_history
+        for reg in r_h:
+            for reg_instance in reg:
+                print("\t" + reg_instance.reg_name, end = " ")
+            print()
         return "\n"
     
 # General helper functions for ease of use
 def extend_the_number(value, value_bit_size, register_state_helper):
     """
-    If a number is passed in that is not the size of the register it is being assigned
-        to, this will extend the BitVec representation to have the correct Bit Width,
-        while maintaining signed properties if needed
+    If a number is passed into another function that is not the size of the register
+        to which it will be assigned, this will extend the BitVec representation 
+        of that value to have the correct Bit Width, ie that of the destination register,
+        while maintaining signed properties of the original number as needed.
 
     Parameters
     ----------
@@ -100,42 +104,43 @@ def extend_the_number(value, value_bit_size, register_state_helper):
         
     Returns
     -------
-    extended_value : TYPE
-        DESCRIPTION.
+    extended_value : TYPE : BitVecValue with a size matching the registers of the program
+        The number passed in as "value" turned into a properly sign extended or zero extended BitVector
 
     """
-    # If the number being added into a register is smaller than the register, 
-    # we need to either sign extend or zero extend the bitValue to fit the new reg
+    valueBV = BitVecVal(value, value_bit_size)
     
     # Find out how much we need to extend the number
     delta_bit_size = register_state_helper.reg_bit_width - value_bit_size
     
     if delta_bit_size > 0:
         if value >= 0:
-            extended_value = ZeroExt(delta_bit_size, value)
+            extended_value = ZeroExt(delta_bit_size, valueBV)
         else:
-            extended_value = SignExt(delta_bit_size, value)
+            extended_value = SignExt(delta_bit_size, valueBV)
             
-    # Somehow this function was incorrectly called?
+    # Somehow this function was incorrectly called, and the input bit size match the register bit size?
+    elif delta_bit_size == 0:
+        extended_value = BitVecVal(value, register_state_helper.reg_bit_width)
+                                   
+    # If this branch is trigger something really went wrong, because now the input number is bigger than the register size
     else:
-        extended_value = value
+        print("How did you get this branch to happen? How is your imm value bigger than the reg size of the program?")
+        extended_value = BitVecVal(value, register_state_helper.reg_bit_width)
         
     return extended_value
 
 def get_the_locations(source_reg, register_state_helper, destination_reg = -1):
     """
-    Purpose: Simplify getting of register names for operations
+    Simplify getting of register names for operations
     
     Parameters
-    ----------
-    added_value : TYPE: int
-        Will be either the location of the source_reg or the imm value
-        
+    ----------        
     source_reg : TYPE : int
         Location where data will taken from before calculation
         
     register_state_helper : TYPE : helper_info
-        Holds reg_history, instruction_counter, problem_flag information
+        Holds reg_history, instruction_counter, problem_flag information, and bit_size for the registers of the program
         
     destination_reg : TYPE : int, optional
         Location where data will be stored after calculation if dealing with a two register operation
@@ -147,17 +152,16 @@ def get_the_locations(source_reg, register_state_helper, destination_reg = -1):
         Information specifying what locations will need to be used in the main formulas
     
     r_s_h : TYPE: helper_info
-        Holds reg_history, instruction_counter, problem_flag information, now updated from the computation
+        Holds reg_history, instruction_counter, problem_flag information, now updated from the instruction
 
     """    
     r_s_h = register_state_helper
     
     # Get the source register names to be used in the solver
     s_r = source_reg
-    s_l = len(r_s_h.register_history[s_r])
     
     #Now holds a bitVec variable to be passed into the solver
-    source_val = r_s_h.register_history[s_r][s_l-1]        
+    source_val = r_s_h.register_history[s_r][-1].name        
     
     # Get the destinaton values
     
@@ -165,24 +169,21 @@ def get_the_locations(source_reg, register_state_helper, destination_reg = -1):
     # Uses the default val from the function to indicate single reg operation
     if destination_reg == -1:
         d_r = s_r
-        d_l = s_l
         destination_old_val = source_val
         
     # For Two Register Operations
     else:
         d_r = destination_reg
-        d_l = len(r_s_h.register_history[d_r])
-        destination_old_val = r_s_h.register_history[d_r][d_l-1]
+        destination_old_val = r_s_h.register_history[d_r][-1].name
 
     #Extending the destination register sublist to include the new register name
     # Previous if/else clause was to make this line work for one and two reg operations
     r_s_h.register_history[d_r].append(\
-               Register_Info("r%d_%d"%(d_r, r_s_h.instruction_counter),\
+               Register_Info("r%d_%d"%(d_r, r_s_h.instruction_number),\
                              r_s_h.reg_bit_width))
     
-    # Since the destination subreg list was extended, d_l, which used to be the length of the old sublist,
-        # now references the last element in the extended sublist
-    destination_new_val = r_s_h.register_history[d_r][d_l]
+    # Since the destination subreg list was extended, this references the last element in the extended sublist
+    destination_new_val = r_s_h.register_history[d_r][-1].name
     
     # Formatting the return output for simplicity
     list_of_locations = [source_val, destination_old_val, destination_new_val]
@@ -191,7 +192,7 @@ def get_the_locations(source_reg, register_state_helper, destination_reg = -1):
 
 def get_the_locations_and_extend(added_value, target_reg, register_state_helper, destination_reg, extension_length):
     """
-    Sets up properly sized inputs and returns the locations to put them
+    Sets up properly sized inputs and returns the register locations to put them
 
     Parameters
     ----------
@@ -216,9 +217,11 @@ def get_the_locations_and_extend(added_value, target_reg, register_state_helper,
     list_of_locations : TYPE : List of BitVector Objects
         # list_of_locations = [source_val, destination_old_val, destination_new_val]
         Information specifying what locations will need to be used in the main formulas
+        If function called on a outside value (imm4, imm8 variants) source_val will 
+        hold a BitVecVal constant, not a named register location
     
     r_s_h : TYPE: helper_info
-        Holds reg_history, instruction_counter, problem_flag information, now updated from the computation
+        Holds reg_history, instruction_counter, problem_flag information, now updated from the instructon
 
     """
     r_s_h = register_state_helper
@@ -232,7 +235,7 @@ def get_the_locations_and_extend(added_value, target_reg, register_state_helper,
         list_of_locations, r_s_h = get_the_locations(target_reg, r_s_h)
         
         # Resize the imm value to the size of the target_reg if needed
-        if not extension_length:
+        if extension_length != 0:
             print("extending the smaller bitVector value to match reg size")
             list_of_locations[0] = extend_the_number(added_value, extension_length, r_s_h)
             
@@ -278,7 +281,7 @@ def add_two_values(added_value, target_reg, register_state_helper, destination_r
         Holds the combination of all constraints due to the add instruction
         
     r_s_h : TYPE: helper_info
-        Holds reg_history, instruction_counter, problem_flag information, now updated from the computation
+        Holds reg_history, instruction_counter, problem_flag information, now updated from the instruction
 
     """
     r_s_h = register_state_helper
@@ -293,42 +296,13 @@ def add_two_values(added_value, target_reg, register_state_helper, destination_r
     no_overflow = BVAddNoOverflow(list_of_locations[0], list_of_locations[1], True)
     
     # Guarantee no underflow
-    no_underflow = BVAddNoUnderflow(list_of_locations[0], list_of_locations[1], True)
+    no_underflow = BVAddNoUnderflow(list_of_locations[0], list_of_locations[1])
     
     # Composition of the conditions
     add_function = And(output_function, no_overflow, no_underflow)
     
-    # # v2 Plan, move correctness checking into execute_program main functions
-    # #Allow for rollback in event of problematic addition
-    # r_s_h.solver_object.push()
-    # #Always check a solution before returning to the main function
-    # if r_s_h.solver_object.check() == unsat:
-    #     # Roll back the solver to a version before the problematic  instructions
-    #     r_s_h.solver_object.pop()
-
-    #     # Special return value to tell the main test program that an error has occured
-    #     r_s_h.problem_flag = r_s_h.instruction_counter * -1
-    
     return add_function, r_s_h
 
-# Specific keyword functions from the main program, they all call the add_two_value function with special inputs
-def add_reg_to_reg(source_reg, target_reg, register_state_helper):
-    
-    add_output, register_state_helper = add_two_values(source_reg, target_reg, register_state_helper, True, 0)
-    
-    return add_output, register_state_helper
-
-def add_imm8_to_reg(value, target_reg, register_state_helper):
-    
-    add_output, register_state_helper = add_two_values(value, target_reg, register_state_helper, False, 0)
-    
-    return add_output, register_state_helper
-
-def add_imm4_to_reg(value, target_reg, register_state_helper):
-    
-    add_output, register_state_helper = add_two_values(value, target_reg, register_state_helper, False, 4)
-
-    return register_state_helper
 
 # Mov Instructions
 def mov_to_reg(added_value, target_reg, register_state_helper, destination_reg, extension_length):
@@ -359,7 +333,7 @@ def mov_to_reg(added_value, target_reg, register_state_helper, destination_reg, 
         Holds the combination of all constraints due to the mov instruction
         
     r_s_h : TYPE: helper_info
-        Holds reg_history, instruction_counter, problem_flag information, now updated from the computation
+        Holds reg_history, instruction_counter, problem_flag information, now updated from the instruction
 
     """
     r_s_h = register_state_helper
@@ -370,25 +344,6 @@ def mov_to_reg(added_value, target_reg, register_state_helper, destination_reg, 
     mov_function = list_of_locations[2] == list_of_locations[0]
 
     return mov_function, r_s_h
-
-# Specific keyword functions from the main program, they all call the mov_to_reg function with special inputs  
-def mov_reg_to_reg(source_reg, target_reg, register_state_helper):
-    
-    mov_output, register_state_helper = add_two_values(source_reg, target_reg, register_state_helper, True, 0)
-    
-    return mov_output, register_state_helper
-
-def mov_imm8_to_reg(value, target_reg, register_state_helper):
-        
-    mov_output, register_state_helper = add_two_values(value, target_reg, register_state_helper, False, 0)
-    
-    return mov_output, register_state_helper
-
-def mov_imm4_to_reg(value, target_reg, register_state_helper):
-
-    mov_output, register_state_helper = add_two_values(value, target_reg, register_state_helper, False, 4)
-    
-    return mov_output, register_state_helper
 
 
 # Jump Instructions
@@ -512,22 +467,94 @@ def create_register_list(numRegs, register_state_helper):
     Naming convention on printed output will be r0_0, r0_1, r0_2, ...
         with incrementing values after the underscore indicating which instruction caused the change
     """      
-    reg_list = [[Register_Info("r"+str(i) + "_0", register_state_helper.reg_bit_width)] for i in range(numRegs)]
+    reg_list = [[Register_Info("r"+str(i) + "_start", register_state_helper.reg_bit_width)] for i in range(numRegs)]
     
     # Update register_state_helper to contain the actual starting reg list, which will now be passed into execute_program
     register_state_helper.update_helper_info(reg_list)
     
     return register_state_helper  
    
-def program_instruction_added(instruction, register_state_helper):
+def create_new_constraints_based_on_instruction(instruction, register_state_helper):
     """
-    Will probably need to rewrite this depending on changes to the basic instruction set
+    Parameters
+    ----------
+    instruction: Type : String
+        Specific keyword sequence to indicate which instruction, and what values, are to be used
+        
+    register_state_helper : TYPE : helper_info
+        Holds reg_history, instruction_counter, problem_flag information, and bit_size for the registers of the program
+
+    
+    Returns
+    -------
+    register_state_helper : TYPE : helper_info
+        Holds reg_history, instruction_counter, problem_flag information, now updated from the instruction
+
     Keywords added so far:
         mov Commands:               movI4 / movI8 / movR
         add Commands:               addI4 / addI8 / addR
         Jump if not equal Commands: jneI4 / jneI8 / jneR
+    
+    Keyword format for add/mov (3 space seperated tokens):
+        (treated as a string)   first: instruction name
+        (treated as an int)     second: either the imm value or the source register location ()
+        (treated as an int)     third: target register to be changed
+        
+    Keyword format for jump (4 space seperated tokens):
+        (treated as a string)   first: instruction name
+        (treated as an int)     second: either the imm value or the source register location
+        (treated as an int)     third: register value to be compared against
+        (treated as an int)     fourth: offset of instructions if comparison fails
+
+    ***Will probably need to rewrite this depending on additions/changes to the basic instruction set***
     """
-    return register_state_helper
+    split_ins = instruction.split(" ")
+    
+    if len(split_ins) < 3 or len(split_ins) > 4:
+        print("Incorrect instruction format for instruction number: %d"%register_state_helper.instruction_number)
+        print("Please retype the following instruction: %s"%instruction)
+        
+    keyword = split_ins[0]
+    value = int(split_ins[1])
+    target_reg = int(split_ins[2])
+    
+    # Format for add and mov commands
+    if len(split_ins) == 3:
+        
+        # Add Instuctions
+        # Adding an undersized outside value to a register value
+        if keyword == "addI4":
+            new_constraints, register_state_helper = add_two_values(value, target_reg, register_state_helper, False, 4)
+            
+        # Adding a register sized outside value to a register value
+        elif keyword == "addI8":
+            new_constraints, register_state_helper = add_two_values(value, target_reg, register_state_helper, False, 0)
+            
+        # Adding a register value to a register value (value variable is being treated as the location of the source_register)
+        elif keyword == "addR":
+            new_constraints, register_state_helper = add_two_values(value, target_reg, register_state_helper, True, 0)
+        
+
+        # Mov Instructions
+        # Moving an undersized outside value into a register
+        elif keyword == "movI4":
+            new_constraints, register_state_helper = mov_to_reg(value, target_reg, register_state_helper, False, 4)
+
+        # Moving a register sized outside value into a register 
+        elif keyword == "movI8":
+            new_constraints, register_state_helper = mov_to_reg(value, target_reg, register_state_helper, False, 0)
+
+        # Moving a register value into another register (value variable is being treated as the location of the source_register)
+        elif keyword == "movR":
+            new_constraints, register_state_helper = mov_to_reg(value, target_reg, register_state_helper, True, 0)
+
+    
+    # Format for jump commands
+    elif len(split_ins) == 4:
+        d=FP
+        
+    
+    return new_constraints, register_state_helper
 
 def execute_branch(program_sub_list, register_state_helper):
     """
@@ -547,6 +574,8 @@ def execute_program_v2(program_list, register_state_helper):
     # Add instructions from the program list to the solver
     for instruction_number, instruction in enumerate(program_list):
         
+        register_state_helper.instruction_number = instruction_number
+        
         # This should allow skipping forward in the ins list without adding skipped instructions
         if register_state_helper.problem_flag >= instruction_number:
             continue
@@ -558,11 +587,34 @@ def execute_program_v2(program_list, register_state_helper):
             # 0 --> an early exit instruction was executed
             # problem_flag < 0 --> an instruction caused an unsat solution
             # problem_flag > instruction_counter --> a jump instruction is pushing the list forward
-        register_state_helper = program_instruction_added(instruction, register_state_helper)
+        new_constraints, register_state_helper = create_new_constraints_based_on_instruction(instruction, register_state_helper)
         
+        # Debug just in case
+        print(register_state_helper)
+        
+        # v2 Plan, move correctness checking into execute_program main functions
+        
+        #Allow for rollback in event of problematic addition
+        register_state_helper.solver_object.push()
+        
+        # Finally put the constraints from the instruction into the solver
+        register_state_helper.solver_object.add(new_constraints)
+                
+        #Always check a solution before returning to the main function
+        if register_state_helper.solver_object.check() == unsat:
+            
+            # Roll back the solver to a version before the problematic  instructions
+            register_state_helper.solver_object.pop()
+        
+            # Special return value to tell the main test program that an error has occured
+            register_state_helper.problem_flag = register_state_helper.instruction_number * -1
+            
+        else:
+            register_state_helper.problem_flag = instruction_number
+            
         # Problem_flag = 0 means an exit instruction was successfully reached inside the main program
-        if register_state_helper.problem_flag == 0:
-            break
+        # if register_state_helper.problem_flag == 0:
+        #     break
         
         # Problem_flag < 0 means that a specific instruction caused a problem, 
         # and we're exiting without finishing all the instructions in the program
@@ -613,21 +665,23 @@ def create_program(program_list = ""):
         Third token is always an int, but its use depends on the first keyword
         
     The example program below cooresponds to the following sequence of instructions:
-        0) Set the inital value of register 0 to 1               (init 0 1)   /* r0 = 1*/
-        1) Set the inital value of register 1 to 3               (init 1 3)   /* r1 = 3*/
-        2) Add the unsigned value of register 0 into register 1  (addU 0 1)   /* r1 += r0*/
-        3) Set the initial value of register 2 to -1             (init 2 -1)  /* r2 = -1*/
-        4) Add the signed value of register 2 into register 1    (addS 2 1)   /* r1 += r2 */
+        0) Set the inital value of register 0 to 1               (movI8 0 1)   /* r0 = 1*/
+        1) Set the inital value of register 1 to 3               (movI8 1 3)   /* r1 = 3*/
+        2) Add the unsigned value of register 0 into register 1  (addR 0 1)   /* r1 += r0*/
+        3) Set the initial value of register 2 to -1             (movI4 2 -1)  /* r2 = -1*/
+        4) Add the signed value of register 2 into register 1    (addR 2 1)   /* r1 += r2 */
+    
+    The output should end up with r0_0 = 1, r1_1 = 3, r1_2 = 4, r2_3 = 255 (-1 in 8 bit), and r1_4 = 3
     """   
     if program_list == "":
-        program_list =["init 0 1" , "init 1 3", "addU 0 1", "init 2 -1", "addS 2 1"]
+        program_list =["movI8 0 1" , "movI8 1 3", "addR 0 1", "movI4 2 -1", "addR 2 1"]
     
     execute_program_v2(program_list, register_state_helper)
 
 
-
+create_program()
     
-a = Helper_Info(4, 2, [["r0_0"], ["r1_0"]], 5)
-print(a)
-a.update_helper_info([["r0_0", "r0_5"], ["r1_0"]], 6)
-print(a)
+# a = Helper_Info(4, 2, [["r0_0"], ["r1_0"]], 5)
+# print(a)
+# a.update_helper_info([["r0_0", "r0_5"], ["r1_0"]], 6)
+# print(a)

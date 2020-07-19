@@ -99,144 +99,135 @@ def extend_the_number(value, value_bit_size, register_state_helper):
         
     return extended_value
 
+def get_the_locations(source_reg, register_state_helper, destination_reg = -1):
+    """
+    Purpose: Simplify getting of register names for operations
+    
+    Parameters
+    ----------
+    reg_history: Type(List of List of z3 bitVectors variables)
+        Holds all previous names for all registers in the program, used to allow for
+        SSA representation of register values.  Will be modified with new register name for whatever
+        comes out of the calculation, to be appended to the destination_reg sublist
+
+    instruction_counter: Type(int)
+        Which instruction of the program is currently being executed, allows for tracing of problematic function calls
+
+    register_bit_width: Type(int)
+        How large the registers should be
+    
+    source_reg: Type(int)
+        Which register to take the inital value from, referencing the last element in the
+        specific sublist of the reg_history list
+
+    destination_reg: Type(int), optional
+        Which register to take the second value from, and what sublist to append the
+        result of the computation to.  If used for one register operation, default value of -1
+
+    Returns
+    -------
+    list_of_values : TYPE(List of z3 bitVector Variables)
+        Returns a list made of [source_val, destination_old_val, destination_new_val]
+        In the case of a one register operation, source_val and destination_old_val will be the same
+
+    reg_history: Type(List of lists of BitVec variables)
+        Additional value appended to the destinaton_reg sublist holding the new value, unless
+            problem has been encountered, then it will just return the original reg_history without alterations
+
+    """
+    
+    r_s_h = register_state_helper
+    
+    # Get the source register names to be used in the solver
+    s_r = source_reg
+    s_l = len(r_s_h.register_history[s_r])
+    
+    #Now holds a bitVec variable to be passed into the solver
+    source_val = r_s_h.register_history[s_r][s_l-1]        
+    
+    # Get the destinaton values
+    
+    # For Single Register Operations, destination register is the source register
+    # Uses the default val from the function to indicate single reg operation
+    if destination_reg == -1:
+        d_r = s_r
+        d_l = s_l
+        destination_old_val = source_val
+        
+    # For Two Register Operations
+    else:
+        d_r = destination_reg
+        d_l = len(r_s_h.register_history[d_r])
+        destination_old_val = r_s_h.register_history[d_r][d_l-1]
+
+    #Extending the destination register sublist to include the new register name
+    # Previous if/else clause was to make this line work for one and two reg operations
+    r_s_h.register_history[d_r].append(\
+               Register_Info("r%d_%d"%(d_r, r_s_h.instruction_counter),\
+                             r_s_h.reg_bit_width))
+    
+    # Since the destination subreg list was extended, d_l, which used to be the length of the old sublist,
+        # now references the last element in the extended sublist
+    destination_new_val = r_s_h.register_history[d_r][d_l]
+    
+    # Formatting the return output for simplicity
+    list_of_values = [source_val, destination_old_val, destination_new_val]
+    
+    return list_of_values, r_s_h
+
 # Specific eBPF Commands on the full register size
-def mov_reg_to_reg(source_reg, target_reg, register_state_helper):
-    return register_state_helper
-
-def mov_imm8_to_reg(target_reg, value, register_state_helper):
-    return register_state_helper
-
-# def add_two_registers_signed(source_reg, destination_reg, solver, reg_history, instruction_counter, register_bit_width):
-#     """
-#     Purpose: Add two register values together, treating the numbers as signed bitValues
-    
-#     Parameters
-#     ----------
-#     source_reg: Type(int)
-#         Which register to take the inital value from, referencing the last element in the
-#         specific sublist of the reg_history list
-
-#     destination_reg: Type(int)
-#         Which register to take the second value from, and what sublist to append the
-#         result of the computation to
-
-#     solver: Type(z3 Solver Object)
-#         Stores all the FOL choices made so far, will be modified due to requirments
-#         of add and passed back out of function
-
-#     reg_history: Type(List of List of z3 bitVectors variables)
-#         Holds all previous names for all registers in the program, used to allow for
-#         SSA representation of register values.  Will be modified with new register name for whatever
-#         comes out of the calculation, to be appended to the destination_reg sublist
-   
-#     instruction_counter: Type(int)
-#         Which instruction of the program is currently being executed, allows for tracing of problematic function calls
-
-#     register_bit_width: Type(int)
-#         How large the registers should be
-
-#     Returns
-#     -------
-#     solver:  Type(z3 Solver Object)
-#         Modified to include the new value of the destination register, and a overflow check on the calculation
-
-#     reg_history: Type(List of lists of BitVec variables)
-#         Additional value appended to the destinaton_reg sublist holding the new value.
-
-#     instruction_counter: Type(int)
-#         This will always return the instruction value of the last correctly completed instruction.
-#         In the event of an unsat solution, this return will force a check in the main program to halt continuned execution
-#         by returning the problematic instruction as a negative int (there is a check in the main function for this return
-#                                                                     always being positive)
-#     """
-#     #Quick variables to access specific indexes in the register history lists
-#     # (ie, the most recent versions of the two registers involved in this add)
-#     list_of_nums, reg_history = \
-#         get_the_nums(reg_history, instruction_counter, register_bit_width, source_reg, destination_reg)
-    
-#     #Allow for rollback in event of problematic addition
-#     solver.push()
-    
-#     #Here there be dragons
-#     #Adding the two registers, and including the overflow constraint assuming signed ints in the register
-#     # list_of_nums = [source_val, destination_old_val, destination_new_val]
-#     solver.add(list_of_nums[2] == list_of_nums[1] + list_of_nums[0])
-    
-    
-#     """What does overflow mean:
-#         src pos + dst pos --> dst_new >= dst_old
-#             technically 7 is the largest positive in 4 bit 2's comp,
-#             so 4 + 4 would overflow, 0100 + 0100 = 1000 (ie 4 + 4 = -8)
-#         src pos dst neg --> 7 + -1 --> dst_new >= dst_old
-#                         --> 1 + -8 also works as above
-#         src neg, dst pos --> -1 + 7 --> dst_old > dst_new
-#                         This one cannot be >= because if dst = 0, 
-#                         then new cannot be equal to it since negs start at -1
-#         src neg, dst neg --> -1 + -5 --> dst_old > dst_new
-        
-#         So the breaking point is based on the sign of the src register (ie not the one being written into)
-        
-#         sign(src) = pos -> (dst_new > dst_old)
-#         Implies(a,b): a is src_val >= 0, b is dst_new > dst_old
-#         sign(src) = neg -> (dst_new <= dst_old)
-#         Implies(a,b): a is src_val < 0, b is dst_old >= dst new
-#         """
-#     # First attempt at signed overflow FOL considerations
-#     # list_of_nums = [source_val, destination_old_val, destination_new_val]
-    
-#     # Source_reg holds 0 or positive number in 2's complement
-#     a = list_of_nums[0] >= 0
-#     b = list_of_nums[2] > list_of_nums[1]
-#     pos_overflow = Implies(a,b)
-#     solver.add(pos_overflow)
-        
-#     # Source_reg holds negative number in 2's complement
-#     a = list_of_nums[0] < 0
-#     b = list_of_nums[2] <= list_of_nums[1]
-#     neg_overflow = Implies(a,b)
-#     solver.add(neg_overflow)
-    
-#     #Here ends dragons
-    
-    
-#     #Always check a solution before returning to the main function
-#     if solver.check() == unsat:
-#         # Roll back the solver to a version before the problematic add instructions
-#         solver.pop()
-
-#         # Remove the register update because it causes a problem
-#         del reg_history[destination_reg][-1]
-
-#         # Special return value to tell the main test program that an error has occured
-#         instruction_counter *= -1
-    
-#     return solver, reg_history, instruction_counter
 
 
-def add_reg_to_reg(source_reg, target_reg, register_state_helper):
-    return register_state_helper
-
-def add_imm8_to_reg(target_reg, value, register_state_helper):
-    return register_state_helper
-
-def jump_on_not_equal_to_reg(source_reg, target_reg, register_state_helper):
-    return register_state_helper
-
-def jump_on_not_equal_to_imm8(source_reg, value, register_state_helper):
-    return register_state_helper
 
 def exit_instruction(register_state_helper):
     return register_state_helper 
 
 
+# Add Instructions
+def add_two_values(source_reg, second_value, register_state_helper, destination_reg = False):
+    """
+    Generic function to combine two numbers and check for overflows        
+    """
+    r_s_h = register_state_helper
 
-# Specific eBPF Commands for using smaller input values than the full register size
-def mov_imm4_to_reg(target_reg, value, register_state_helper):
-    # Resize the imm value to the size of the target_reg
-    extended_value = extend_the_number(value, 4, register_state_helper)
+    if destination_reg:
+        list_of_locations = get_the_locations(source_reg, r_s_h, second_value)
+    else:
+        list_of_locations = get_the_locations(source_reg, r_s_h)
+        list_of_locations[1] = BitVecVal(second_value, r_s_h.reg_bit_width)
+
+    #Allow for rollback in event of problematic addition
+    r_s_h.solver_object.push()
     
-    # Now that the input value is properly sized, call mov_imm8_to_reg
-    register_state_helper = mov_imm8_to_reg(target_reg, extended_value, register_state_helper)
+    # list_of_nums = [source_val, destination_old_val, destination_new_val]
+    # Perform the addition
+    r_s_h.solver_object.add(list_of_nums[2] == list_of_nums[1] + list_of_nums[0])
+    
+    # Guarantee no overflow
+    r_s_h.solver_object.add(BVAddNoOverflow(list_of_nums[0], list_of_nums[1], True))
+    
+    # Guarantee no underflow
+    r_s_h.solver_object.add(BVAddNoUnderflow(list_of_nums[0], list_of_nums[1], True))
+    
+    #Always check a solution before returning to the main function
+    if r_s_h.solver_object.check() == unsat:
+        # Roll back the solver to a version before the problematic  instructions
+        r_s_h.solver_object.pop()
+
+        # Remove the register update because it causes a problem
+        del r_s_h.register_history[second_value][-1]
+
+        # Special return value to tell the main test program that an error has occured
+        r_s_h.problem_flag = r_s_h.instruction_counter * -1
+    
+    return r_s_h
+    
+def add_reg_to_reg(source_reg, target_reg, register_state_helper):
+    register_state_helper = add_two_values(source_reg, target_reg, register_state_helper, True)
+    return register_state_helper
+
+def add_imm8_to_reg(target_reg, value, register_state_helper):
+    register_state_helper = add_two_values(target_reg, value, register_state_helper)
     return register_state_helper
 
 def add_imm4_to_reg(target_reg, value, register_state_helper):
@@ -247,14 +238,53 @@ def add_imm4_to_reg(target_reg, value, register_state_helper):
     register_state_helper = add_imm8_to_reg(target_reg, extended_value, register_state_helper)
     return register_state_helper
 
-def jump_on_not_equal_to_imm4(source_reg, value, register_state_helper):
+# Mov Instructions
+def mov_to_reg(source_reg, second_value, register_state_helper, destination_reg = False):
+
+def mov_reg_to_reg(source_reg, target_reg, register_state_helper):
+    return register_state_helper
+
+def mov_imm8_to_reg(target_reg, value, register_state_helper):
+    return register_state_helper
+
+def mov_imm4_to_reg(target_reg, value, register_state_helper):
+    # Resize the imm value to the size of the target_reg
+    extended_value = extend_the_number(value, 4, register_state_helper)
+    
+    # Now that the input value is properly sized, call mov_imm8_to_reg
+    register_state_helper = mov_imm8_to_reg(target_reg, extended_value, register_state_helper)
+    return register_state_helper
+
+
+# Jump Instructions
+def jump_general(source_reg, second_val, offset, register_state_helper, destination_reg = False)
+
+def jump_on_not_equal_to_reg(source_reg, target_reg, offset, register_state_helper):
+    return register_state_helper
+
+def jump_on_not_equal_to_imm8(source_reg, value, offset, register_state_helper):
+    return register_state_helper
+
+def jump_on_not_equal_to_imm4(source_reg, value, offset, register_state_helper):
     # Resize the imm value to the size of the target_reg
     extended_value = extend_the_number(value, 4, register_state_helper)
 
     # Now that the input value is properly sized, call jump_on_not_equal_to_imm8
     register_state_helper = jump_on_not_equal_to_imm8(source_reg, extended_value, register_state_helper)
     return register_state_helper
+"""
+Thoughts on how to operate the jump instruction
 
+Jump creates a defined branch point, where register values should be frozen and 
+referenced in case something goes awry
+
+Can we use an offset marker to pass into the jump function, and do something like.
+
+if == then implies next_instruction
+if != then implies next_instruction + offset?
+
+
+"""
 
 # Program Setup and Output Functions
 def check_and_print_model(instruction_list, register_state_helper):

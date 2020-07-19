@@ -538,11 +538,11 @@ def create_new_constraints_based_on_instruction(instruction, register_state_help
         # Mov Instructions
         # Moving an undersized outside value into a register
         elif keyword == "movI4":
-            new_constraints, register_state_helper = mov_to_reg(value, target_reg, register_state_helper, False, 4)
+            new_constraints, register_state_helper = mov_to_reg(target_reg, value, register_state_helper, False, 4)
 
         # Moving a register sized outside value into a register 
         elif keyword == "movI8":
-            new_constraints, register_state_helper = mov_to_reg(value, target_reg, register_state_helper, False, 0)
+            new_constraints, register_state_helper = mov_to_reg(target_reg, value, register_state_helper, False, 0)
 
         # Moving a register value into another register (value variable is being treated as the location of the source_register)
         elif keyword == "movR":

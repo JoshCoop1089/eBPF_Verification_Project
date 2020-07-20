@@ -49,7 +49,8 @@ class Register_Info:
 
 # Container to streamline function parameters/returns
 class Helper_Info:
-    def __init__(self, reg_bit_width):
+    def __init__(self, num_Regs, reg_bit_width):
+        self.num_Regs = num_Regs
         self.reg_bit_width = reg_bit_width
         self.solver_object = Solver()
         
@@ -214,7 +215,7 @@ def get_the_locations_and_extend(input_value, target_reg, register_state_helper,
 
     """
     r_s_h = register_state_helper
-
+    
     # Two Register Operation
     if destination_reg:
         list_of_locations, r_s_h = get_the_locations(input_value, r_s_h, target_reg)
@@ -326,7 +327,7 @@ def mov_to_reg(input_value, target_reg, register_state_helper, destination_reg, 
     return mov_function, r_s_h
 
 # Jump Instructions
-def jump_general(input_val, target_reg, offset, register_state_helper, destination_reg, extension_length):
+def jump_general(input_value, target_reg, offset, register_state_helper, destination_reg, extension_length):
     """
     Thoughts on how to operate the jump instruction
     
@@ -361,28 +362,60 @@ def jump_general(input_val, target_reg, offset, register_state_helper, destinati
         4) Execute_branch will act like normal execute_program, moving through the
             instruction sublist, except it will return register_state_helper when completed.
         5) if execute branch returns without a problem, add the negative implication
-            
+           
+    Problem:
+        how to reference the right instances of a register for the second implication if it is changed in the branch
+        
+    Possible solution:
+        create a small array of the last entries in each register list to reference for neg implication?
     """
+    r_s_h = register_state_helper
     
+    list_of_locations, r_s_h = get_the_locations_and_extend(input_value, target_reg, r_s_h, destination_reg, extension_length)
     
+    # I don't feel like rewriting get loc and extend to not always add a new reg value on the 
+    # destination register list, so i'll just delete it here
+    del r_s_h.register_history[target_reg][-1]
     
+    # list_of_locations = [source_val, destination_old_val, destination_new_val]
+    comparison_statement = list_of_locations[0] == list_of_locations[1]
     
-    
-    return register_state_helper
+    # Getting the most recent instances of all register values to compare against
+    current_reg_states = [r_s_h.register_history[i][-1] for i in range(r_s_h.num_Regs)]
+   
+    for i in current_reg_states:
+        print(i.name)
+        
+    # These two variables should hold the index of the required instructions
+    next_ins = r_s_h.instruction_number + 1
+    next_ins_with_offset = r_s_h.instruction_number + 1 + offset
 
-def jump_on_not_equal_to_reg(source_reg, target_reg, offset, register_state_helper):
-    return register_state_helper
+    equal_next_ins , r_s_h = \
+        create_new_constraints_based_on_instruction(r_s_h.instruction_list[next_ins], register_state_helper)
+    
+    # formulas returned from create_new_constraints
+    comparison_equal_implication = Implies(comparison_statement, equal_next_ins)
+    print(comparison_equal_implication)
+    print()
+    
+    branch_of_program = r_s_h.instruction_list[next_ins:next_ins_with_offset]
+    print(branch_of_program)
+    for instruction_number,instructon in enumerate(branch_of_program,r_s_h.instruction_number):
+        a=b
+    
+    not_equal_next_ins , r_s_h = \
+        create_new_constraints_based_on_instruction(r_s_h.instruction_list[next_ins_with_offset], register_state_helper)
+    comparison_not_equal_implication = Implies(Not(comparison_statement), not_equal_next_ins)
+    print(comparison_not_equal_implication)
+    
+    
+    # comparison_not_equal_implication = Implies(Not(comparison_statement), next_ins_with_offset)
+    comparison_constraints = comparison_statement
+    
+    
+    
+    return comparison_constraints, register_state_helper
 
-def jump_on_not_equal_to_imm8(value, target_reg, offset, register_state_helper):
-    return register_state_helper
-
-def jump_on_not_equal_to_imm4(value, target_reg, offset, register_state_helper):
-    # Resize the imm value to the size of the target_reg
-    extended_value = extend_the_number(value, 4, register_state_helper)
-
-    # Now that the input value is properly sized, call jump_on_not_equal_to_imm8
-    register_state_helper = jump_on_not_equal_to_imm8(source_reg, extended_value, register_state_helper)
-    return register_state_helper
 
 def exit_instruction(register_state_helper):
     exit_ins = Bool("exit_%d"%register_state_helper.instruction_number)
@@ -446,10 +479,8 @@ def create_register_list(numRegs, register_state_helper):
 
     Returns
     -------
-    reg_list : Type(List of Lists of Register_Info objects)
-        Clean slate to allow for a look at the progress of a new collection of 
-        bpf commands, and their effects on register values.
-
+    register_state_helper : TYPE : helper_info
+        Holds reg_history, instruction_counter, problem_flag information, now updated from the instruction
     """
     
     """This creates a 2D List to hold info about the names, bit widths, and types of registers,
@@ -601,6 +632,7 @@ def create_new_constraints_based_on_instruction(instruction, register_state_help
                 
         # Format for jump commands
         elif len(split_ins) == 4:
+            offset = int(split_ins[3])
             
             # Comparing an undersized outside value to a register value
             if keyword == "jneI4":
@@ -612,7 +644,7 @@ def create_new_constraints_based_on_instruction(instruction, register_state_help
             
             # Comparing a register value to a register value
             elif keyword == "jneR":
-                new_constraints, register_state_helper = jump_on_not_equal()
+                new_constraints, register_state_helper = jump_general(value, target_reg, offset, register_state_helper, True, 0)
                                
             # Keyword doesn't match known functions
             else:
@@ -713,7 +745,7 @@ def create_program(program_list = ""):
     reg_bit_width = 8
     
     # Setting up the container for holding register history, register sizes, and instruction counter
-    register_state_helper = Helper_Info(reg_bit_width)
+    register_state_helper = Helper_Info(num_Regs, reg_bit_width)
     
     # Set up the inital list of registers and z3 solver, to be modified in execute_program
     register_state_helper = create_register_list(num_Regs, register_state_helper)
@@ -777,6 +809,9 @@ def create_program(program_list = ""):
     """   
     if program_list == "":
         program_list =["movI8 1 0" , "movI8 3 1", "addR 0 1", "movI4 -1 2", "addR 2 1", "addI4 -3 2"]
+    
+    # Loading the program into r_s_h for use in jump commands if needed
+    register_state_helper.instruction_list = program_list
     
     execute_program_v2(program_list, register_state_helper)
 

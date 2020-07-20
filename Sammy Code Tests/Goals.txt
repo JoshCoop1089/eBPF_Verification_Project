@@ -44,3 +44,9 @@ Range analysis:
 7/2:
  - Re-read Chapter 5 and 6, mini-lecture during 6/29 meeting should assist in understanding
  - Generate a precondition for check_alu_op (for BPF_MOV)
+
+7/6:
+ - Consider/reconstruct the safety postcondition for check_alu_op
+
+7/13:
+ - Check verifier safety postcondition FOL against oracle safety postcondition FOL

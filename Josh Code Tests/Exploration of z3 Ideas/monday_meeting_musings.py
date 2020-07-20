@@ -19,16 +19,18 @@ Monday Meeting Plan
         we can use the ZeroExt() and SignExt() z3 functions to fill the register in if needed
         
     e) Branching
-        -- Using JNE split the possible function conditions
+        -- Using JNE, split the possible function conditions
         -- One branch will have an early exit condition
-        -- Branching JNE condition will compare the two signed values stored in registers
 
 get-rekt-hardened in 4/8 bit form:
-    #define BPF_DISABLE_VERIFIER()                                                   \
+
+#define BPF_DISABLE_VERIFIER()                                                   \
 	BPF_MOV4_IMM(BPF_REG_2, 0xF),                  /* r2 = (u4)0xF   */   \
 	BPF_JMP_IMM(BPF_JNE, BPF_REG_2, 0xF, 2),       /* if (r2 == -1) {        */   \
 	BPF_MOV8_IMM(BPF_REG_0, 0),                    /*   exit(0);             */   \
 	BPF_EXIT_INSN()                                /* }                      */   \
+    
+    And some more instructions i'll make up to be on the NE path from the jump imm command    
 
 """
 from z3 import *
@@ -36,14 +38,14 @@ from z3 import *
 # Internal representation for one instance of a register
 class Register_Info:
     def __init__(self, name, reg_bit_size,  reg_type = ""):
-        self.name = BitVec(name, reg_bit_size)
-        self.reg_name = name 
-        
         # Not using this yet, because just dealing with arithmetic on numbers, not pointers
         # self.reg_type = reg_type
         
         # Unsure if I will need to store this on a per register basis
         # self.reg_bit_size = reg_bit_size
+
+        self.name = BitVec(name, reg_bit_size)
+        self.reg_name = name 
 
 # Container to streamline function parameters/returns
 class Helper_Info:
@@ -55,20 +57,7 @@ class Helper_Info:
         self.register_history = [[]]
         self.instruction_list = [""]
         self.instruction_number = 0
-        self.problem_flag = -1
-        
-    def update_helper_info(self, register_history, instruction_number = 0, problem_flag = -1, reg_bit_width = -1):
-        
-        #Only need to initialize these once at the start of the program
-        if reg_bit_width != -1:
-            self.reg_bit_width = reg_bit_width
-            
-        # Keeping track of changes to registers and which instruction was just attempted/caused a problem
-        self.register_history = register_history
-        self.instruction_number = instruction_number
-        self.problem_flag = problem_flag
-        
-        return self
+        self.problem_flag = 0
     
     def __str__(self):
         print("The current contents of the helper_bundle are:")
@@ -190,13 +179,13 @@ def get_the_locations(source_reg, register_state_helper, destination_reg = -1):
     
     return list_of_locations, r_s_h
 
-def get_the_locations_and_extend(added_value, target_reg, register_state_helper, destination_reg, extension_length):
+def get_the_locations_and_extend(input_value, target_reg, register_state_helper, destination_reg, extension_length):
     """
     Sets up properly sized inputs and returns the register locations to put them
 
     Parameters
     ----------
-    added_value : TYPE: int
+    input_value : TYPE: int
         Will be either the location of the source_reg or the imm value
         
     target_reg : TYPE : int
@@ -206,7 +195,7 @@ def get_the_locations_and_extend(added_value, target_reg, register_state_helper,
         Holds reg_history, instruction_counter, problem_flag information, and bit_size for the registers of the program
         
     destination_reg : TYPE : boolean
-        States whether to treat added_value as a source reg (True) or an imm value (False).
+        States whether to treat input_value as a source reg (True) or an imm value (False).
         
     extension_length : Type : Int
         if the value being added isn't the same size as the register, this value tell how much
@@ -228,7 +217,7 @@ def get_the_locations_and_extend(added_value, target_reg, register_state_helper,
 
     # Two Register Operation
     if destination_reg:
-        list_of_locations, r_s_h = get_the_locations(added_value, r_s_h, target_reg)
+        list_of_locations, r_s_h = get_the_locations(input_value, r_s_h, target_reg)
     
     # Adding an imm value to a register
     else:
@@ -236,30 +225,22 @@ def get_the_locations_and_extend(added_value, target_reg, register_state_helper,
         
         # Resize the imm value to the size of the target_reg if needed
         if extension_length != 0:
-            print("extending the smaller bitVector value to match reg size")
-            list_of_locations[0] = extend_the_number(added_value, extension_length, r_s_h)
+            print("\tExtending the smaller bitVector value to match reg size")
+            list_of_locations[0] = extend_the_number(input_value, extension_length, r_s_h)
             
         else:
-            list_of_locations[0] = BitVecVal(added_value, r_s_h.reg_bit_width)
+            list_of_locations[0] = BitVecVal(input_value, r_s_h.reg_bit_width)
             
     return list_of_locations, r_s_h
 
-# Specific eBPF Commands on the full register size
-
-
-
-def exit_instruction(register_state_helper):
-    return register_state_helper 
-
-
 # Add Instructions
-def add_two_values(added_value, target_reg, register_state_helper, destination_reg, extension_length):
+def add_two_values(input_value, target_reg, register_state_helper, destination_reg, extension_length):
     """
     Generic function to combine two numbers and check for overflows    
 
     Parameters
     ----------
-    added_value : TYPE: int
+    input_value : TYPE: int
         Will be either the location of the source_reg or the imm value
         
     target_reg : TYPE : int
@@ -269,7 +250,7 @@ def add_two_values(added_value, target_reg, register_state_helper, destination_r
         Holds reg_history, instruction_counter, problem_flag information, and bit_size for the registers of the program
         
     destination_reg : TYPE : boolean
-        States whether to treat added_value as a source reg (True) or an imm value (False).
+        States whether to treat input_value as a source reg (True) or an imm value (False).
         
     extension_length : Type : Int
         if the value being added isn't the same size as the register, this value tell how much
@@ -286,7 +267,7 @@ def add_two_values(added_value, target_reg, register_state_helper, destination_r
     """
     r_s_h = register_state_helper
 
-    list_of_locations, r_s_h = get_the_locations_and_extend(added_value, target_reg, r_s_h, destination_reg, extension_length)
+    list_of_locations, r_s_h = get_the_locations_and_extend(input_value, target_reg, r_s_h, destination_reg, extension_length)
     
     # list_of_locations = [source_val, destination_old_val, destination_new_val]
     # Perform the addition
@@ -303,15 +284,14 @@ def add_two_values(added_value, target_reg, register_state_helper, destination_r
     
     return add_function, r_s_h
 
-
 # Mov Instructions
-def mov_to_reg(added_value, target_reg, register_state_helper, destination_reg, extension_length):
+def mov_to_reg(input_value, target_reg, register_state_helper, destination_reg, extension_length):
     """
     Generic function to move a value into a register    
 
     Parameters
     ----------
-    added_value : TYPE: int
+    input_value : TYPE: int
         Will be either the location of the source_reg or the imm value
         
     target_reg : TYPE : int
@@ -321,7 +301,7 @@ def mov_to_reg(added_value, target_reg, register_state_helper, destination_reg, 
         Holds reg_history, instruction_counter, problem_flag information, and bit_size for the registers of the program
         
     destination_reg : TYPE : boolean
-        States whether to treat added_value as a source reg (True) or an imm value (False).
+        States whether to treat input_value as a source reg (True) or an imm value (False).
         
     extension_length : Type : Int
         if the value being added isn't the same size as the register, this value tell how much
@@ -338,16 +318,56 @@ def mov_to_reg(added_value, target_reg, register_state_helper, destination_reg, 
     """
     r_s_h = register_state_helper
     
-    list_of_locations, r_s_h = get_the_locations_and_extend(added_value, target_reg, r_s_h, destination_reg, extension_length)
+    list_of_locations, r_s_h = get_the_locations_and_extend(input_value, target_reg, r_s_h, destination_reg, extension_length)
     
     # list_of_locations = [source_val, destination_old_val, destination_new_val]
     mov_function = list_of_locations[2] == list_of_locations[0]
 
     return mov_function, r_s_h
 
-
 # Jump Instructions
-def jump_general(source_reg, second_val, offset, register_state_helper, destination_reg, extension_length):
+def jump_general(input_val, target_reg, offset, register_state_helper, destination_reg, extension_length):
+    """
+    Thoughts on how to operate the jump instruction
+    
+    Jump creates a defined branch point, where register values should be frozen and 
+    referenced in case something goes awry
+    
+    Can we use an offset marker to pass into the jump function, and do something like.
+    
+    if == then implies next_instruction
+    if != then implies next_instruction + offset?
+    
+    
+    If i pass in the instruction list with reg_state_helper, I can use it to create implication 
+        statements based on the value of offset
+        
+    Example Situation:
+        jneR with offset of 3, and r0, r1 comparison, is located at instruction 4:
+        
+            this means that if r0 = r1, instruction 5 is implied
+            else, if r0 != r1, instruction 8 is implied
+            
+        Since we cannot assume instruction 8 is the last instruction, we need to add 
+            the smaller branch (ins 5, 6, and 7) to the solver, and then return to 
+            execute instruction 9 if needed in the main program
+            
+    Current plan:
+        1) Get the values to be compared
+        2) Set up the implication statements for positive and negative results on comparison
+            by using create_new_constraint on the single needed instructions
+        3) Add the positive implication to the solver and check it.
+        3) Snip a portion of instruction list, and pass it into execute_branch.
+        4) Execute_branch will act like normal execute_program, moving through the
+            instruction sublist, except it will return register_state_helper when completed.
+        5) if execute branch returns without a problem, add the negative implication
+            
+    """
+    
+    
+    
+    
+    
     return register_state_helper
 
 def jump_on_not_equal_to_reg(source_reg, target_reg, offset, register_state_helper):
@@ -363,18 +383,10 @@ def jump_on_not_equal_to_imm4(value, target_reg, offset, register_state_helper):
     # Now that the input value is properly sized, call jump_on_not_equal_to_imm8
     register_state_helper = jump_on_not_equal_to_imm8(source_reg, extended_value, register_state_helper)
     return register_state_helper
-"""
-Thoughts on how to operate the jump instruction
 
-Jump creates a defined branch point, where register values should be frozen and 
-referenced in case something goes awry
-
-Can we use an offset marker to pass into the jump function, and do something like.
-
-if == then implies next_instruction
-if != then implies next_instruction + offset?
-
-"""
+def exit_instruction(register_state_helper):
+    exit_ins = Bool("exit_%d"%register_state_helper.instruction_number)
+    return exit_ins, register_state_helper 
 
 # Program Setup and Output Functions
 def check_and_print_model(instruction_list, register_state_helper):
@@ -404,8 +416,6 @@ def check_and_print_model(instruction_list, register_state_helper):
         print("\nThe last instruction attempted was #%d:"%(abs(problem_flag)))
         if problem_flag == (len(instruction_list) - 1):
             print("Program successfully added all instructions")
-        elif problem_flag == 0:
-            print("Program successfully added an exit instruction.")
         else:
             print("Program didn't successfully add all given instructions")
         print(s.model())
@@ -467,12 +477,40 @@ def create_register_list(numRegs, register_state_helper):
     Naming convention on printed output will be r0_0, r0_1, r0_2, ...
         with incrementing values after the underscore indicating which instruction caused the change
     """      
-    reg_list = [[Register_Info("r"+str(i) + "_start", register_state_helper.reg_bit_width)] for i in range(numRegs)]
-    
+
     # Update register_state_helper to contain the actual starting reg list, which will now be passed into execute_program
-    register_state_helper.update_helper_info(reg_list)
+    register_state_helper.register_history = \
+        [[Register_Info("r"+str(i) + "_start", register_state_helper.reg_bit_width)] for i in range(numRegs)]
     
     return register_state_helper  
+
+def incorrect_instruction_format(instruction, register_state_helper):
+    """
+    Formating error occured when trying to read an instruction in create_new_constraints
+
+    Parameters
+    ----------
+    instruction: Type : String
+        Specific keyword sequence to indicate which instruction, and what values, are to be used
+        
+    register_state_helper : TYPE : helper_info
+        Holds reg_history, instruction_counter, problem_flag information, and bit_size for the registers of the program
+
+    
+    Returns
+    -------
+    new_constraints : Type : z3 equation
+        Poision pill constraint to force solver to unsat
+        
+    register_state_helper : TYPE : helper_info
+        Holds reg_history, instruction_counter, problem_flag information, now updated from the instruction
+    """
+    print("\nIncorrect instruction format for instruction number: %d"%register_state_helper.instruction_number)
+    print("Please retype the following instruction: \n\t-->  %s  <--"%instruction)
+    register_state_helper.problem_flag = register_state_helper.instruction_number * -1
+    new_constraints = And(True, False)
+    
+    return new_constraints, register_state_helper
    
 def create_new_constraints_based_on_instruction(instruction, register_state_helper):
     """
@@ -494,8 +532,9 @@ def create_new_constraints_based_on_instruction(instruction, register_state_help
         mov Commands:               movI4 / movI8 / movR
         add Commands:               addI4 / addI8 / addR
         Jump if not equal Commands: jneI4 / jneI8 / jneR
-    
-    Keyword format for add/mov (3 space seperated tokens):
+        exit Command:               exit
+        
+    Keyword format for add/mov/exit (3 space seperated tokens):
         (treated as a string)   first: instruction name
         (treated as an int)     second: either the imm value or the source register location ()
         (treated as an int)     third: target register to be changed
@@ -508,52 +547,77 @@ def create_new_constraints_based_on_instruction(instruction, register_state_help
 
     ***Will probably need to rewrite this depending on additions/changes to the basic instruction set***
     """
+    
     split_ins = instruction.split(" ")
     
+    # Incorreclty sized instruction string
     if len(split_ins) < 3 or len(split_ins) > 4:
-        print("Incorrect instruction format for instruction number: %d"%register_state_helper.instruction_number)
-        print("Please retype the following instruction: %s"%instruction)
+        new_constraints, register_state_helper = incorrect_instruction_format(instruction, register_state_helper)
+
         
-    keyword = split_ins[0]
-    value = int(split_ins[1])
-    target_reg = int(split_ins[2])
-    
-    # Format for add and mov commands
-    if len(split_ins) == 3:
+    else:
+        keyword = split_ins[0]
+        value = int(split_ins[1])
+        target_reg = int(split_ins[2])
         
-        # Add Instuctions
-        # Adding an undersized outside value to a register value
-        if keyword == "addI4":
-            new_constraints, register_state_helper = add_two_values(value, target_reg, register_state_helper, False, 4)
+        # Format for add, mov, and exit commands
+        if len(split_ins) == 3:
             
-        # Adding a register sized outside value to a register value
-        elif keyword == "addI8":
-            new_constraints, register_state_helper = add_two_values(value, target_reg, register_state_helper, False, 0)
+            # Add Instuctions
+            # Adding an undersized outside value to a register value
+            if keyword == "addI4":
+                new_constraints, register_state_helper = add_two_values(value, target_reg, register_state_helper, False, 4)
+                
+            # Adding a register sized outside value to a register value
+            elif keyword == "addI8":
+                new_constraints, register_state_helper = add_two_values(value, target_reg, register_state_helper, False, 0)
+                
+            # Adding a register value to a register value (value variable is being treated as the location of the source_register)
+            elif keyword == "addR":
+                new_constraints, register_state_helper = add_two_values(value, target_reg, register_state_helper, True, 0)
             
-        # Adding a register value to a register value (value variable is being treated as the location of the source_register)
-        elif keyword == "addR":
-            new_constraints, register_state_helper = add_two_values(value, target_reg, register_state_helper, True, 0)
-        
-
-        # Mov Instructions
-        # Moving an undersized outside value into a register
-        elif keyword == "movI4":
-            new_constraints, register_state_helper = mov_to_reg(target_reg, value, register_state_helper, False, 4)
-
-        # Moving a register sized outside value into a register 
-        elif keyword == "movI8":
-            new_constraints, register_state_helper = mov_to_reg(target_reg, value, register_state_helper, False, 0)
-
-        # Moving a register value into another register (value variable is being treated as the location of the source_register)
-        elif keyword == "movR":
-            new_constraints, register_state_helper = mov_to_reg(value, target_reg, register_state_helper, True, 0)
-
     
-    # Format for jump commands
-    elif len(split_ins) == 4:
-        d=FP
-        
+            # Mov Instructions
+            # Moving an undersized outside value into a register
+            elif keyword == "movI4":
+                new_constraints, register_state_helper = mov_to_reg(value, target_reg, register_state_helper, False, 4)
     
+            # Moving a register sized outside value into a register 
+            elif keyword == "movI8":
+                new_constraints, register_state_helper = mov_to_reg(value, target_reg, register_state_helper, False, 0)
+    
+            # Moving a register value into another register (value variable is being treated as the location of the source_register)
+            elif keyword == "movR":
+                new_constraints, register_state_helper = mov_to_reg(value, target_reg, register_state_helper, True, 0)
+                
+            # Exit command located
+            elif keyword == "exit":
+                new_constraints, register_state_helper = exit_instruction(register_state_helper)
+             
+            # Keyword doesn't match known functions
+            else:
+                new_constraints, register_state_helper = incorrect_instruction_format(instruction, register_state_helper)
+
+                
+        # Format for jump commands
+        elif len(split_ins) == 4:
+            
+            # Comparing an undersized outside value to a register value
+            if keyword == "jneI4":
+                new_constraints, register_state_helper = jump_on_not_equal()
+
+            # Comparing a register sized outside value to a register value
+            elif keyword == "jneI8":
+                new_constraints, register_state_helper = jump_on_not_equal()
+            
+            # Comparing a register value to a register value
+            elif keyword == "jneR":
+                new_constraints, register_state_helper = jump_on_not_equal()
+                               
+            # Keyword doesn't match known functions
+            else:
+                new_constraints, register_state_helper = incorrect_instruction_format(instruction, register_state_helper)
+        
     return new_constraints, register_state_helper
 
 def execute_branch(program_sub_list, register_state_helper):
@@ -577,20 +641,15 @@ def execute_program_v2(program_list, register_state_helper):
         register_state_helper.instruction_number = instruction_number
         
         # This should allow skipping forward in the ins list without adding skipped instructions
-        if register_state_helper.problem_flag >= instruction_number:
+        if register_state_helper.problem_flag > instruction_number:
             continue
         
         print("Attempting to combine solver with instruction #%d: %s"%(instruction_number, instruction))
-
-        
-        # Special register_state_helper.problem_flag returns:
-            # 0 --> an early exit instruction was executed
-            # problem_flag < 0 --> an instruction caused an unsat solution
-            # problem_flag > instruction_counter --> a jump instruction is pushing the list forward
-        new_constraints, register_state_helper = create_new_constraints_based_on_instruction(instruction, register_state_helper)
+        new_constraints, register_state_helper = \
+            create_new_constraints_based_on_instruction(instruction, register_state_helper)
         
         # Debug just in case
-        print(register_state_helper)
+        # print(register_state_helper)
         
         # v2 Plan, move correctness checking into execute_program main functions
         
@@ -603,18 +662,22 @@ def execute_program_v2(program_list, register_state_helper):
         #Always check a solution before returning to the main function
         if register_state_helper.solver_object.check() == unsat:
             
-            # Roll back the solver to a version before the problematic  instructions
+            # Roll back the solver to a version before the problematic instructions
             register_state_helper.solver_object.pop()
         
             # Special return value to tell the main test program that an error has occured
             register_state_helper.problem_flag = register_state_helper.instruction_number * -1
             
+            # Corner case if it fails on the first instruction (ie instruction 0)
+            if register_state_helper.instruction_number == 0:
+                register_state_helper.problem_flag = -1
+            
         else:
             register_state_helper.problem_flag = instruction_number
             
-        # Problem_flag = 0 means an exit instruction was successfully reached inside the main program
-        # if register_state_helper.problem_flag == 0:
-        #     break
+        # Special register_state_helper.problem_flag returns:
+            # problem_flag < 0 --> an instruction caused an unsat solution
+            # problem_flag > instruction_counter --> a jump instruction is pushing the list forward
         
         # Problem_flag < 0 means that a specific instruction caused a problem, 
         # and we're exiting without finishing all the instructions in the program
@@ -623,7 +686,7 @@ def execute_program_v2(program_list, register_state_helper):
             print("\t-->  " + program_list[abs(register_state_helper.problem_flag)] + "  <--")
             print("The last viable solution before the problem instruction is shown below:")
             break
-        
+
     check_and_print_model(program_list, register_state_helper)
     
 def create_program(program_list = ""):
@@ -657,31 +720,65 @@ def create_program(program_list = ""):
 
     
     """ 
-    All individual instructions are a single string of the form:
-        'keyword' 'source_register' 'destination_register, shift_val, or initial val'
+    Keywords added so far:
+        mov Commands:               movI4 / movI8 / movR
+        add Commands:               addI4 / addI8 / addR
+        Jump if not equal Commands: jneI4 / jneI8 / jneR
+        Exit Commands:              exit
+    
+    Keyword format for add/mov (3 space seperated tokens):
+        (treated as a string)   first: instruction name
+        (treated as an int)     second: either the imm value or the source register location ()
+        (treated as an int)     third: target register to be changed
         
-        First keyword is a string identifying the instruction action (addU, and, lshift)
-        Second source_reg is an int to say which register will be modifing/contributing a value to the instruction
-        Third token is always an int, but its use depends on the first keyword
+    Keyword format for jump (4 space seperated tokens):
+        (treated as a string)   first: instruction name
+        (treated as an int)     second: either the imm value or the source register location
+        (treated as an int)     third: register value to be compared against
+        (treated as an int)     fourth: offset of instructions if comparison fails
         
     The example program below cooresponds to the following sequence of instructions:
-        0) Set the inital value of register 0 to 1               (movI8 0 1)   /* r0 = 1*/
-        1) Set the inital value of register 1 to 3               (movI8 1 3)   /* r1 = 3*/
-        2) Add the unsigned value of register 0 into register 1  (addR 0 1)   /* r1 += r0*/
-        3) Set the initial value of register 2 to -1             (movI4 2 -1)  /* r2 = -1*/
-        4) Add the signed value of register 2 into register 1    (addR 2 1)   /* r1 += r2 */
+        0) Set the inital value of register 0 to 1        (movI8 1 0)   /* r0 = 1   */
+        1) Set the inital value of register 1 to 3        (movI8 3 1)   /* r1 = 3   */
+        2) Add the value of register 0 into register 1    (addR 0 1)    /* r1 += r0 */
+        3) Set the initial value of register 2 to -1      (movI4 -1 2)  /* r2 = -1  */
+        4) Add the value of register 2 into register 1    (addR 2 1)    /* r1 += r2 */
+        5) Add a 4 bit wide -3 to register 2              (addI4 -3 2)  /* r2 += -3 */
     
-    The output should end up with r0_0 = 1, r1_1 = 3, r1_2 = 4, r2_3 = 255 (-1 in 8 bit), and r1_4 = 3
+    The output should end up with r0_0 = 1, r1_1 = 3, r1_2 = 4, r2_3 = 255 (-1 in 8 bit), 
+        r1_4 = 3, and r2_5 = 252 (-4 in 8 bit)
+    
+    And it does (actual program output):
+        Attempting to combine solver with instruction #0: movI8 1 0
+        Attempting to combine solver with instruction #1: movI8 3 1
+        Attempting to combine solver with instruction #2: addR 0 1
+        Attempting to combine solver with instruction #3: movI4 -1 2
+        	Extending the smaller bitVector value to match reg size
+        Attempting to combine solver with instruction #4: addR 2 1
+        Attempting to combine solver with instruction #5: addI4 -3 2
+        	Extending the smaller bitVector value to match reg size
+        
+        The full program is:
+        0:	movI8 1 0
+        1:	movI8 3 1
+        2:	addR 0 1
+        3:	movI4 -1 2
+        4:	addR 2 1
+        5:	addI4 -3 2
+        
+        The last instruction attempted was #5:
+        Program successfully added all instructions
+        [r0_0 = 1,
+         r1_2 = 4,
+         r2_3 = 255,
+         r1_1 = 3,
+         r1_4 = 3,
+         r2_5 = 252]
     """   
     if program_list == "":
-        program_list =["movI8 0 1" , "movI8 1 3", "addR 0 1", "movI4 2 -1", "addR 2 1"]
+        program_list =["movI8 1 0" , "movI8 3 1", "addR 0 1", "movI4 -1 2", "addR 2 1", "addI4 -3 2"]
     
     execute_program_v2(program_list, register_state_helper)
 
 
 create_program()
-    
-# a = Helper_Info(4, 2, [["r0_0"], ["r1_0"]], 5)
-# print(a)
-# a.update_helper_info([["r0_0", "r0_5"], ["r1_0"]], 6)
-# print(a)

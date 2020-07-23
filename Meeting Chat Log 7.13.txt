@@ -1,0 +1,13 @@
+(state, instruction) -> state
+from Srinivas Narayana Ganapathy to everyone:
+Josh: concrete evaluation -- no need to maintain bounds. Sammy: symbolic evaluation -- maintain bounds. The final FOL will check whether the symbolic and concrete evaluation match each other. If they dont, either our formalization is wrong, or the verifier's symbolic eval is buggy.
+from Srinivas Narayana Ganapathy to everyone:
+concrete eval: (state: reg, latest version, value)
+from Srinivas Narayana Ganapathy to everyone:
+symbolic eval: (state: reg, bounds on the register, type, ...)
+from Srinivas Narayana Ganapathy to everyone:
+state, instruction -> state
+from Srinivas Narayana Ganapathy to everyone:
+for all inputs x,
+from Srinivas Narayana Ganapathy to everyone:
+state [program, concrete(x)] should be within the symbolic state [program, symbolic(x)]

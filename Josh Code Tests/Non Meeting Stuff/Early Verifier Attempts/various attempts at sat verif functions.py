@@ -10,7 +10,7 @@ from z3 import *
 from Translate_eBPF_Ops_to_FOL import *
 
 s = Solver()
-# a, b = Bools('a b')
+a, b, c = Bools('a b c')
 # condition = Or(a,b)
 # condition2 = And(a,b)
 # func =  And(condition, condition2)
@@ -23,7 +23,7 @@ s = Solver()
 number_of_registers = 3
 register_bit_width = 4
 
-s, register_list = clear_solver_reset_register_history(s, number_of_registers, register_bit_width)
+# s, register_list = clear_solver_reset_register_history(s, number_of_registers, register_bit_width)
 
 # # Arbitrary test values for checking add function
 # condition = register_list[2][0] == register_list[0][0] + register_list[1][0]
@@ -66,9 +66,9 @@ def add_register_values(source_reg, destination_reg, function, reg_history, inst
         function = check_func
     return function, instruction_counter, reg_history
     
-function = register_list[0][0] == 1
-function, instruction_counter, reg_history = add_register_values(0, 1, function, register_list, 1, 4)
-prove(function)
+# function = register_list[0][0] == 1
+# function, instruction_counter, reg_history = add_register_values(0, 1, function, register_list, 1, 4)
+# prove(function)
 
 # numRegs = 3
 # reg_list = [[Bool("r"+str(i) + "_0")] for i in range(numRegs)]
@@ -87,4 +87,15 @@ prove(function)
 # r2l = Implies(chunk2, chunk1)
 
 # func = And(l2r, r2l)
-# prove(func)
+
+# a -> b ^ ~a -> c
+
+func = And(Implies(a, b), Implies(Not(a), c))
+# pro1ve(func)
+s.check()
+try:
+    print(s.model()[d])
+except Z3Exception:
+    print("oops")
+    
+print(2*3-1)

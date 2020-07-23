@@ -1,0 +1,15 @@
+from Josh Cooper to everyone:
+https://github.com/JoshCoop1089/eBPF_Verification_Project/blob/master/Josh%20Code%20Tests/Exploration%20of%20z3%20Ideas/OOPRegister%20Tests.py
+from Santosh Nagarakatte to everyone:
+https://github.com/Z3Prover/z3/blob/master/src/api/z3_api.h#L2826
+from Santosh Nagarakatte to everyone:
+/**
+       \brief Sign-extend of the given bit-vector to the (signed) equivalent bit-vector of
+       size \ccode{m+i}, where \c m is the size of the given
+       bit-vector.
+       The node \c t1 must have a bit-vector sort.
+       def_API('Z3_mk_sign_ext', AST, (_in(CONTEXT), _in(UINT), _in(AST)))
+    */
+    Z3_ast Z3_API Z3_mk_sign_ext(Z3_context c, unsigned i, Z3_ast t1);
+from Srinivas Narayana Ganapathy to everyone:
+Sammy, could you call 1-650-429-3300 wth access code 120 304 2165

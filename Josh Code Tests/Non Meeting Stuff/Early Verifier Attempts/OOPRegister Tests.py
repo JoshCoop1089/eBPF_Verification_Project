@@ -8,11 +8,7 @@ Created on Wed Jul 15 14:29:11 2020
 from z3 import *
     
 
-class Register_Info:
-    def __init__(self, name, reg_bit_size,  reg_type = ""):
-        self.name = BitVec(name, reg_bit_size)
-        self.reg_bit_size = reg_bit_size
-        self.reg_type = reg_type
+
         
         
 def create_register_list(numRegs, regBitWidth):
@@ -714,26 +710,34 @@ def execute_program_new(program_list, FOLFunction, reg_history, reg_bit_width):
 
 
 
-# Code tests for ideas formalized in above functions
-input_num = 12  # -4 in 4 bit signed
-output_num = sign_extend_to_larger_register(input_num, 4, 8)
-print(output_num)  #should be 252 in 8 bit unsigned (representing -4 in 8 bit signed)
+# # Code tests for ideas formalized in above functions
+# input_num = 12  # -4 in 4 bit signed
+# output_num = sign_extend_to_larger_register(input_num, 4, 8)
+# print(output_num)  #should be 252 in 8 bit unsigned (representing -4 in 8 bit signed)
 
 
 s = Solver()
 regBitWidth = 4
 numRegs = 4
-reg_list = [[Register_Info("r"+str(i) + "_0", regBitWidth)] for i in range(numRegs)]
-for i in reg_list:
-    print(i[0].name)
-    print(i[0].reg_type)
+# reg_list = [[Register_Info("r"+str(i) + "_0", regBitWidth)] for i in range(numRegs)]
+# for i in reg_list:
+#     print(i[0].name)
+#     print(i[0].reg_type)
     
-a = BitVec('a', 8)
-s.add(reg_list[0][-1].name == 4)
-s.add(reg_list[1][-1].name == 9)
-s.add(reg_list[2][-1].name == 65)
-s.add(reg_list[3][-1].name == 0xC)
-s.add(a == 0xFC)
+a, b = BitVecs('a b', 4)
+# a = BitVecVal(4, 4)
+# b = BitVecVal(3, 4)
+BV = BVAddNoOverflow(a,b, True)
+# s.add(a > 0) 
+# s.add(b > 0)
+s.add(BV, a > 0, b > 0, a == 4, b == 4)
+
+
+# s.add(reg_list[0][-1].name == 4)
+# s.add(reg_list[1][-1].name == 9)
+# s.add(reg_list[2][-1].name == 65)
+# s.add(reg_list[3][-1].name == 0xC)
+# s.add(a == 0xFC)
 print(s.check())
-if s.check():
+if s.check() == sat:
     print(s.model())

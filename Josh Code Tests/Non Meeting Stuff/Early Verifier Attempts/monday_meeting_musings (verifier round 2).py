@@ -73,6 +73,14 @@ class Helper_Info:
             print()
         return "\n"
     
+# Any time there is a jump command, a new branch will be evaluated.  This will aid in storage and organization
+class Branch_Container:
+    def __init__(self, main_branch):
+        self.list = [main_branch] 
+        
+    def add_branch(self, new_branch):
+        self.list.append(new_branch)
+        
 # General helper functions for ease of use
 def extend_the_number(value, value_bit_size, register_state_helper):
     """
@@ -380,6 +388,27 @@ def jump_general(input_value, target_reg, offset, register_state_helper, destina
     # list_of_locations = [source_val, destination_old_val, destination_new_val]
     comparison_statement = list_of_locations[0] == list_of_locations[1]
     
+    
+    # If comparison is true: proceed through rest of instruction list
+    # If comparison is false, jump to offset instruction and proceed through rest of program
+    
+    # Need to make a copy of the current solver to direct new creation of dual branches
+    
+    """
+    JNE isn't passing back any new information, jne is passing back the problem flag to tell the main executor 
+        that it needs to initalize a new branch object'
+    
+    """
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     # Getting the most recent instances of all register values to compare against
     current_reg_states = [r_s_h.register_history[i][-1] for i in range(r_s_h.num_Regs)]
    
@@ -416,7 +445,6 @@ def jump_general(input_value, target_reg, offset, register_state_helper, destina
     
     return comparison_constraints, register_state_helper
 
-
 def exit_instruction(register_state_helper):
     exit_ins = Bool("exit_%d"%register_state_helper.instruction_number)
     return exit_ins, register_state_helper 
@@ -446,11 +474,12 @@ def check_and_print_model(instruction_list, register_state_helper):
     problem_flag = register_state_helper.problem_flag
         
     if s.check() == sat:
-        print("\nThe last instruction attempted was #%d:"%(abs(problem_flag)))
+        print("\nThe last instruction attempted was #%d:\n"%(abs(problem_flag)))
         if problem_flag == (len(instruction_list) - 1):
             print("Program successfully added all instructions")
         else:
             print("Program didn't successfully add all given instructions")
+        print("The stored model contains the following variable states")
         print(s.model())
     else:
         """Since we're forcing the main program executor to only pass solver objects 
@@ -462,7 +491,33 @@ def check_and_print_model(instruction_list, register_state_helper):
         
         print("You screwed something up if this ever gets printed")
         
+    print("\nThis program would be written as the following for BPF in C:\n")        
+    translate_to_bpf_in_c(register_state_helper.instruction_list)
+    
+    # Print out the final values of the registers in the program
+    print_current_register_state(register_state_helper)
     print()
+    
+def print_current_register_state(register_state_helper):
+    """
+    Quick print function to return the most recent values stored in each register
+    """
+    print()
+    r_s_h = register_state_helper
+    current_reg_states = [r_s_h.register_history[i][-1] for i in range(r_s_h.num_Regs)]
+    print("The most recent register values are:")
+    for i, register in enumerate(current_reg_states):
+        print("Register %d:\t"%i, end = " ")
+        if "start" in register.reg_name:
+            print("Not Initalized")
+        else:
+            try:
+                num = r_s_h.solver_object.model()[register.name]
+                print(num)
+            except Z3Exception:
+                print("oops, z3 said nope! wonder why...")
+    print()
+
 
 def create_register_list(numRegs, register_state_helper):
     """
@@ -578,6 +633,116 @@ def create_new_constraints_based_on_instruction(instruction, register_state_help
 
     ***Will probably need to rewrite this depending on additions/changes to the basic instruction set***
     """
+    # instruction = register_state_helper.instruction_list[counter]
+    
+    split_ins = instruction.split(" ")
+    
+    # Incorreclty sized instruction string
+    if len(split_ins) < 3 or len(split_ins) > 4:
+        new_constraints, register_state_helper = incorrect_instruction_format(instruction, register_state_helper)
+
+        
+    else:
+        keyword = split_ins[0]
+        value = int(split_ins[1])
+        target_reg = int(split_ins[2])
+        
+        # Format for add, mov, and exit commands
+        if len(split_ins) == 3:
+            
+            # Add Instuctions
+            # Adding an undersized outside value to a register value
+            if keyword == "addI4":
+                new_constraints, register_state_helper = add_two_values(value, target_reg, register_state_helper, False, 4)
+                
+            # Adding a register sized outside value to a register value
+            elif keyword == "addI8":
+                new_constraints, register_state_helper = add_two_values(value, target_reg, register_state_helper, False, 0)
+                
+            # Adding a register value to a register value (value variable is being treated as the location of the source_register)
+            elif keyword == "addR":
+                new_constraints, register_state_helper = add_two_values(value, target_reg, register_state_helper, True, 0)
+            
+    
+            # Mov Instructions
+            # Moving an undersized outside value into a register
+            elif keyword == "movI4":
+                new_constraints, register_state_helper = mov_to_reg(value, target_reg, register_state_helper, False, 4)
+    
+            # Moving a register sized outside value into a register 
+            elif keyword == "movI8":
+                new_constraints, register_state_helper = mov_to_reg(value, target_reg, register_state_helper, False, 0)
+    
+            # Moving a register value into another register (value variable is being treated as the location of the source_register)
+            elif keyword == "movR":
+                new_constraints, register_state_helper = mov_to_reg(value, target_reg, register_state_helper, True, 0)
+                
+            # Exit command located
+            elif keyword == "exit":
+                new_constraints, register_state_helper = exit_instruction(register_state_helper)
+             
+            # Keyword doesn't match known functions
+            else:
+                new_constraints, register_state_helper = incorrect_instruction_format(instruction, register_state_helper)
+
+                
+        # Format for jump commands
+        elif len(split_ins) == 4:
+            offset = int(split_ins[3])
+            
+            # Comparing an undersized outside value to a register value
+            if keyword == "jneI4":
+                new_constraints, register_state_helper = jump_on_not_equal()
+
+            # Comparing a register sized outside value to a register value
+            elif keyword == "jneI8":
+                new_constraints, register_state_helper = jump_on_not_equal()
+            
+            # Comparing a register value to a register value
+            elif keyword == "jneR":
+                new_constraints, register_state_helper = jump_general(value, target_reg, offset, register_state_helper, True, 0)
+                               
+            # Keyword doesn't match known functions
+            else:
+                new_constraints, register_state_helper = incorrect_instruction_format(instruction, register_state_helper)
+        
+    return new_constraints, register_state_helper
+def create_new_constraints_based_on_instruction_v2(register_state_helper, counter):
+    """
+    Parameters
+    ----------
+    instruction: Type : String
+        Specific keyword sequence to indicate which instruction, and what values, are to be used
+        
+    register_state_helper : TYPE : helper_info
+        Holds reg_history, instruction_counter, problem_flag information, and bit_size for the registers of the program
+
+    
+    Returns
+    -------
+    register_state_helper : TYPE : helper_info
+        Holds reg_history, instruction_counter, problem_flag information, now updated from the instruction
+
+    Keywords added so far:
+        mov Commands:               movI4 / movI8 / movR
+        add Commands:               addI4 / addI8 / addR
+        Jump if not equal Commands: jneI4 / jneI8 / jneR
+        exit Command:               exit
+        
+    Keyword format for add/mov/exit (3 space seperated tokens):
+        (treated as a string)   first: instruction name
+        (treated as an int)     second: either the imm value or the source register location ()
+        (treated as an int)     third: target register to be changed
+        
+    Keyword format for jump (4 space seperated tokens):
+        (treated as a string)   first: instruction name
+        (treated as an int)     second: either the imm value or the source register location
+        (treated as an int)     third: register value to be compared against
+        (treated as an int)     fourth: offset of instructions if comparison fails
+
+    ***Will probably need to rewrite this depending on additions/changes to the basic instruction set***
+    """
+    instruction = register_state_helper.instruction_list[counter]
     
     split_ins = instruction.split(" ")
     
@@ -652,16 +817,53 @@ def create_new_constraints_based_on_instruction(instruction, register_state_help
         
     return new_constraints, register_state_helper
 
-def execute_branch(program_sub_list, register_state_helper):
+def execute_program_v3(all_branches):
     """
-    Small version of execute_program to take care of branching conditions in Jump instructions
     
-    pro_sub_list will take in a truncated version of the instruction list, focusing on
-        the instructions needed if the jump instruction is true, ie start ins number to
-        start ins = offset.  Then it will loop through those instructions, adding them 
-        as normal, checking for errors and, will pass back the main r_s_h to indicate 
-        either successful addition of instructions or problem instructions
+
+    Parameters
+    ----------
+    all_branches : TYPE :Branch_Container
+        Will hold a list of all created branches for the program.  
+        Each branch will be a Helper_Object type maintaining its own z3 solver and problem flags
+
+    Returns
+    -------
+    register_state_helper : TYPE
+        DESCRIPTION.
+
     """
+    instruction_to_execute = 0
+    while instruction_to_execute < len(all_branches.list[0]):
+        
+        # Given a branch_container object, iterate through the list of branches, and execute a single instruction on that branch
+        for branch_number, branch_of_program in enumerate(all_branches.list):
+            
+            # branch will be a helper_info object
+            new_constraints, branch_of_program = \
+                create_new_constraints_based_on_instruction_v2(branch_of_program, instruction_to_execute)
+                
+            #Allow for rollback in event of problematic addition
+            branch_of_program.solver_object.push()
+            
+            # Finally put the constraints from the instruction into the solver
+            branch_of_program.solver_object.add(new_constraints)
+                    
+            #Always check a solution before returning to the main function
+            if branch_of_program.solver_object.check() == unsat:
+                
+                # Roll back the solver to a version before the problematic instructions
+                branch_of_program.solver_object.pop()
+            
+                # Special return value to tell the main test program that an error has occured
+                branch_of_program.problem_flag = branch_of_program.instruction_number * -1
+                
+                # Corner case if it fails on the first instruction (ie instruction 0)
+                if branch_of_program.instruction_number == 0:
+                    branch_of_program.problem_flag = -1
+                
+            else:
+                branch_of_program.problem_flag = instruction_number
     
     return register_state_helper
     
@@ -682,7 +884,6 @@ def execute_program_v2(program_list, register_state_helper):
         
         # Debug just in case
         # print(register_state_helper)
-        
         # v2 Plan, move correctness checking into execute_program main functions
         
         #Allow for rollback in event of problematic addition
@@ -706,7 +907,9 @@ def execute_program_v2(program_list, register_state_helper):
             
         else:
             register_state_helper.problem_flag = instruction_number
-            
+        
+        # In case you want to see the register values after every instruction
+        print_current_register_state(register_state_helper)
         # Special register_state_helper.problem_flag returns:
             # problem_flag < 0 --> an instruction caused an unsat solution
             # problem_flag > instruction_counter --> a jump instruction is pushing the list forward
@@ -808,12 +1011,88 @@ def create_program(program_list = ""):
          r2_5 = 252]
     """   
     if program_list == "":
-        program_list =["movI8 1 0" , "movI8 3 1", "addR 0 1", "movI4 -1 2", "addR 2 1", "addI4 -3 2"]
+        # program_list =["movI8 0 0", "movI8 0 0", "movI8 1 2" , "movI8 3 3", "addR 2 3", "movI8 -1 1", "addR 2 1", "addI4 -3 2"]
+        program_list =["movI8 1 0" , "movI8 3 1", "addR 0 1", "movI4 -1 2", "addR 2 1", "addI4 -3 2", "exit 0 0"]
     
     # Loading the program into r_s_h for use in jump commands if needed
     register_state_helper.instruction_list = program_list
-    
     execute_program_v2(program_list, register_state_helper)
+    
+    # Making the main holder of any distinct branches that need to be evaluated for the program
+    # all_branches = Branch_Container(register_state_helper)
+    
+    # execute_program_v3(all_branches)
+    
 
+def translate_to_bpf_in_c(program_list):
+    """
+    Simplify the testing of a program in bpf_step using our current accessible keywords
+        and the libbpf.h functions.  No error checking added, assuming formating of input strings
+        is valid.
+        
+    This function will output a list of strings containing the translated versions ready to be
+        copied right into sock_example.c, with a little maintence to remove the '' marks when python 
+        prints out a string.
+        
+    Example:
+        program_list =
+        ["movI8 0 0", "movI8 0 0", 
+         "movI8 1 2" , "movI8 3 3", 
+         "addR 2 3", "movI8 -1 1", 
+         "addR 2 1", "addI4 -3 2"]
+        
+        would print the following to the console:
+            
+        ['BPF_MOV64_IMM(BPF_REG_0, 0)', 'BPF_MOV64_IMM(BPF_REG_0, 0)', 
+         'BPF_MOV64_IMM(BPF_REG_2, 1)', 'BPF_MOV64_IMM(BPF_REG_3, 3)', 
+         'BPF_ALU64_REG(BPF_ADD, BPF_REG_3, BPF_REG_2)', 'BPF_MOV64_IMM(BPF_REG_1, -1)', 
+         'BPF_ALU64_REG(BPF_ADD, BPF_REG_1, BPF_REG_2)', 'BPF_ALU32_IMM(BPF_ADD, BPF_REG_2, -3)']
+    """
+    output = []
 
+    for instruction in program_list:
+        split_ins = instruction.split(" ")
+        keyword = split_ins[0]
+        value = split_ins[1]
+        target_reg = split_ins[2]
+        
+        if len(split_ins) == 3:
+        # Add Instuctions
+            # Adding an undersized outside value to a register value
+            if keyword == "addI4":
+                instruction = f'BPF_ALU32_IMM(BPF_ADD, BPF_REG_{target_reg}, {value})'
+            # Adding a register sized outside value to a register value
+            elif keyword == "addI8":
+                instruction = f'BPF_ALU64_IMM(BPF_ADD, BPF_REG_{target_reg}, {value})'
+                
+            # Adding a register value to a register value (value variable is being treated as the location of the source_register)
+            elif keyword == "addR":
+                instruction = f'BPF_ALU64_REG(BPF_ADD, BPF_REG_{target_reg}, BPF_REG_{value})'
+            
+        # Mov Instructions
+            # Moving an outside value into a register (there is no mov32_imm definied in libbpf.h in bpf_step)
+            elif keyword == "movI4" or keyword == "movI8":
+                instruction = f'BPF_MOV64_IMM(BPF_REG_{target_reg}, {value})'
+
+            # Moving a register value into another register (value variable is being treated as the location of the source_register)
+            elif keyword == "movR":
+                instruction = f'BPF_MOV64_REG(BPF_REG_{target_reg}, BPF_REG_{value})'
+
+            # Exit command located
+            elif keyword == "exit":
+                instruction = "BPF_EXIT_INSN()"
+
+        # Format for jump commands
+        elif len(split_ins) == 4:
+            offset = int(split_ins[3])
+            
+            # Comparing an outside value to a register value (there is no jump_imm_32 in bpf_step)
+            if keyword == "jneI4" or keyword == "jneI8":
+                instruction = f'BPF_JMP_IMM(BPF_JNE, BPF_REG_{target_reg}, {value}, {offset})'
+            
+            # Comparing a register value to a register value
+            elif keyword == "jneR":
+                instruction = f'BPF_JMP_REG(BPF_JNE, BPF_REG_{target_reg}, BPF_REG_{value}, {offset})'
+        output.append(instruction)
+    print(output)
 create_program()

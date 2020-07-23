@@ -535,7 +535,7 @@ def create_register_list(numRegs, regBitWidth):
         register_list[1][1] is the state of register r1 after a change was made to it
         the Name stored in r_l[1][1] might be r1_3.  This would indicate that the first change made
             on register 1 occured in the 3rd instruction of the program
-    ***This doesn't mean that two changes have been made, just that instruction 2 made a change on reg1
+    ***This doesn't mean that three changes have been made, just that instruction 3 made a change on reg1
                     
     This way, you can maintain a history of register changes, use each individual entry
         as a new bitvec variable in the solver, and possibly trace back to a specific instruction

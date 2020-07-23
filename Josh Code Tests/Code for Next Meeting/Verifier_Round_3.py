@@ -755,6 +755,7 @@ def execute_program_v3(all_branches):
         instruction_to_execute += 1
         prune_list = set()
         new_branch_made = False
+        print(len(all_branches.branch_list))
         
         # Given a branch_container object, iterate through the list of branches, and execute a single instruction on each branch
         for branch_number, branch_of_program in enumerate(all_branches.branch_list):
@@ -850,9 +851,12 @@ def execute_program_v3(all_branches):
                     
     
     
-            # After a full runthrough of a single instruction on all branches, prune the list before re-entering the for loop
-            for branch_number in prune_list:
-                all_branches.delete_branch(branch_number)
+        # After a full runthrough of a single instruction on all branches, prune the list before re-entering the for loop
+        for branch_number in prune_list:
+            print(len(all_branches.branch_list))
+            all_branches.delete_branch(branch_number)
+            print(len(all_branches.branch_list))
+
     
     for branch in all_branches.branch_list:
         check_and_print_model(branch.instruction_list, branch)
@@ -908,17 +912,7 @@ def create_program(program_list = ""):
         (treated as an int)     third: register value to be compared against
         (treated as an int)     fourth: offset of instructions if comparison fails
         
-    The example program below cooresponds to the following sequence of instructions:
-        0) Set the inital value of register 1 to 3        (movI8 4 1)   /* r0 = 1   */
-        1) Set the inital value of register 1 to 3        (movI8 3 1)   /* r1 = 3   */
-        2) Add the value of register 0 into register 1    (addR 0 1)    /* r1 += r0 */
-        3) Set the initial value of register 2 to -1      (movI4 -1 2)  /* r2 = -1  */
-        4) Add the value of register 2 into register 1    (addR 2 1)    /* r1 += r2 */
-        5) Add a 4 bit wide -3 to register 2              (addI4 -3 2)  /* r2 += -3 */
-    
-    
-    And it does (actual program output):
-
+    ***See verif_r3_testing.py for outcome of program runs***
     """   
     if program_list == "":
         program_list = ["movI8 4 1", "movI8 3 2", "addR 1 2", "jneI8 5 2 2", "addR 1 1", "addI4 3 2", "addR 1 2", "addR 2 1", "exit 0 0"]

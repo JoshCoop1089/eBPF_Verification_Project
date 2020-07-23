@@ -4,11 +4,37 @@ Created on Thu Jul 23 11:32:54 2020
 
 @author: joshc
 
-Individual Programs Start on line:
+Individual Program Tests Start on line:
+    (Programs Passed)
     15:  Default Program
     141: Program with no jumps, only add/mov
     217: Program with multiple jumps, all paths satisfiable, no convergence of paths
     364: Program with single jump, both paths converge
+    442: Program with multiple jumps, some paths converge
+    578: Program with multiple jumps, some paths cause unsat conditions
+    
+    (Programs Failed, bug identified)
+    695: Program with multiple jumps, some paths cause unsat, some paths converge
+    
+    (Programs Failed, reasons unknown)
+    
+Known Bugs:
+    695: Currently, the indexing on the branch_list is causing this to break because it
+        deleted branch 0, and then branch 1/2 merge, but branch 2's merge operation references
+        branch_list[2] which doesn't exist after the deletion of branch 0.
+        
+General Bug:  
+    If a branch is created, it doesn't let the program iterate through any 
+        branches that remain untested on an instruction which created the new branch
+    
+    Example:    
+        Two branches currently exist, branch 0, and branch 1.  The next instruction to be run, #3, is a jump
+        
+        Branch 0 Tests Instruction 3 --> Makes a new branch due to I3 being a Jump
+        
+        Branch 1 doesn't run Instruction 3 even though it should because the current branch creation
+            code run due to Branch 0 hitting the jump forced the entire branch list to restart from
+            the beginning, while also moving ahead to check instruction 4
 """
 from Verifier_Round_3 import *
 
@@ -571,14 +597,124 @@ from Verifier_Round_3 import *
 # -------------------------
 # """
 
-# Program with multiple jumps, some paths cause unsat conditions
-print("-"*25)
-program_list = ["movI8 1 1", "jneR 1 1 4", "addR 1 1", "jneR 1 1 2", "addI8 3000 1", "addR 1 1", "exit 0 0"]
-create_program(program_list)
-print("-"*25)
-
-# # Program with multiple jumps, some paths cause unsat, some paths converge
+# # Program with multiple jumps, some paths cause unsat conditions
 # print("-"*25)
-# program_list = ["movI8 1 1", "jneR 1 1 4", "addR 1 1", "jneR 1 1 2", "addR 1 1", "addR 1 1", "exit 0 0"]
+# program_list = ["movI8 1 1", "jneR 1 1 4", "addR 1 1", "jneR 1 1 2", "addI8 3000 1", "addR 1 1", "exit 0 0"]
 # create_program(program_list)
 # print("-"*25)
+
+# """ Program Outputs:
+# -------------------------
+
+# Looking at Branch 0
+# Attempting to combine Branch 0 with instruction #0: movI8 1 1
+
+# Looking at Branch 0
+# Attempting to combine Branch 0 with instruction #1: jneR 1 1 4
+
+# --> Creating a new branch starting at instruction #1 <--
+
+
+# Looking at Branch 0
+# Attempting to combine Branch 0 with instruction #2: addR 1 1
+
+# Looking at Branch 1
+# 	Skipping instruction 2 due to jump condition
+
+
+# Looking at Branch 0
+# Attempting to combine Branch 0 with instruction #3: jneR 1 1 2
+
+# --> Creating a new branch starting at instruction #3 <--
+
+
+# Looking at Branch 0
+# Attempting to combine Branch 0 with instruction #4: addI8 3000 1
+
+# Branch 0 failed to find a viable solution.                          
+# This branch came from the jump at instruction #0                         
+# The specific jump instruction was movI8 1 1
+
+# Looking at Branch 1
+# 	Skipping instruction 4 due to jump condition
+
+
+# Looking at Branch 2
+# 	Skipping instruction 4 due to jump condition
+
+
+# Looking at Branch 0
+# 	Skipping instruction 5 due to jump condition
+
+
+# Looking at Branch 1
+# 	Skipping instruction 5 due to jump condition
+
+
+# Looking at Branch 0
+# Attempting to combine Branch 1 with instruction #6: exit 0 0
+
+# Looking at Branch 1
+# Attempting to combine Branch 2 with instruction #6: exit 0 0
+
+# --> Output for Branch 1 <--
+
+# The last instruction attempted was #6:
+
+# Program successfully added all instructions
+# The stored model contains the following variable states
+# [exit_5 = True, r1_0 = 1]
+
+# The register values are currently:
+# Register 0:	 Not Initalized
+# Register 1:	 1
+# Register 2:	 Not Initalized
+# Register 3:	 Not Initalized
+
+
+
+# --> Output for Branch 2 <--
+
+# The last instruction attempted was #6:
+
+# Program successfully added all instructions
+# The stored model contains the following variable states
+# [exit_6 = True, r1_2 = 2, r1_0 = 1]
+
+# The register values are currently:
+# Register 0:	 Not Initalized
+# Register 1:	 2
+# Register 2:	 Not Initalized
+# Register 3:	 Not Initalized
+
+
+
+# The full program in Python keyword format is:
+# 0:	movI8 1 1
+# 1:	jneR 1 1 4
+# 2:	addR 1 1
+# 3:	jneR 1 1 2
+# 4:	addI8 3000 1
+# 5:	addR 1 1
+# 6:	exit 0 0
+
+# This program would be written as the following for BPF in C:
+
+# ['BPF_MOV64_IMM(BPF_REG_1, 1)', 
+#  'BPF_JMP_REG(BPF_JNE, BPF_REG_1, BPF_REG_1, 4)', 
+#  'BPF_ALU64_REG(BPF_ADD, BPF_REG_1, BPF_REG_1)', 
+#  'BPF_JMP_REG(BPF_JNE, BPF_REG_1, BPF_REG_1, 2)', 
+#  'BPF_ALU64_IMM(BPF_ADD, BPF_REG_1, 3000)', 
+#  'BPF_ALU64_REG(BPF_ADD, BPF_REG_1, BPF_REG_1)', 
+#  'BPF_EXIT_INSN()']
+# -------------------------
+# """
+
+# Program with multiple jumps, some paths cause unsat, some paths converge
+# Currently, the indexing on the branch_list is causing this to break because it
+# deleted branch 0, and then branch 1/2 merge, but branch 2's merge operation references
+# branch_list[2] which doesn't exist after the deletion of branch 0.
+print("-"*25)
+program_list = ["movI8 1 1", "jneR 1 1 4", "addR 1 1", "jneR 1 1 1", "addI8 3000 1", "addI4 -1 1", "exit 0 0"]
+create_program(program_list)
+print("-"*25)

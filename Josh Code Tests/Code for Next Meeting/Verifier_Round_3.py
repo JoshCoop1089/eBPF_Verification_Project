@@ -89,6 +89,7 @@ class Branch_Container:
         # Main list holding all the Individual_Branch for each branch needed
         # Main branch is the program path assuming all jumps aren't taken (ie it executes every instruction in the program)
         self.branch_list = [main_branch] 
+        self.instruction_list = main_branch.instruction_list
         
         """
         If self.list[2] exists, self.instruction_causing_split[2] will hold the jump conditions 
@@ -755,7 +756,6 @@ def execute_program_v3(all_branches):
         instruction_to_execute += 1
         prune_list = set()
         new_branch_made = False
-        print(len(all_branches.branch_list))
         
         # Given a branch_container object, iterate through the list of branches, and execute a single instruction on each branch
         for branch_number, branch_of_program in enumerate(all_branches.branch_list):
@@ -765,7 +765,6 @@ def execute_program_v3(all_branches):
             # A previous jump instruction made this branch need to skip some instructions
             if branch_of_program.problem_flag > instruction_to_execute:
                 new_branch_made = True
-                # branch_of_program.solver_object.check()
                 print(f'\tSkipping instruction {instruction_to_execute} due to jump condition\n')
                 # check_and_print_model(branch_of_program.instruction_list, branch_of_program)        
                 # print_current_register_state(branch_of_program)
@@ -795,13 +794,12 @@ def execute_program_v3(all_branches):
                     all_branches.add_branch(new_branch, instruction_to_execute)
                     
                     # Exit the for loop to reset the internal values looping over all_branches
+                    # This currently bugs out if there is a jump instruction early in the list of branches,
+                    # but there are other branches to check after the new branch is created
                     break
                  
                 # Non jump instruction executed, check for viable model after new instruction added
                 else:
-                    # #Allow for rollback in event of problematic addition
-                    # branch_of_program.solver_object.push()
-                    
                     # Finally put the constraints from the instruction into the solver
                     branch_of_program.solver_object.add(new_constraints)
                     # print(f'Branch {branch_number} Problem Flag after Instruction {instruction_to_execute}: {branch_of_program.problem_flag}')
@@ -809,10 +807,7 @@ def execute_program_v3(all_branches):
                    
                     # Always check a solution before continuing
                     if branch_of_program.solver_object.check() == unsat:
-                        
-                        # # Roll back the solver to a version before the problematic instructions
-                        # branch_of_program.solver_object.pop()
-                    
+
                         # Special return value to tell the main test program that an error has occured
                         branch_of_program.problem_flag = branch_of_program.instruction_number * -1
                         
@@ -849,20 +844,16 @@ def execute_program_v3(all_branches):
                           f'Branch {branch_to_remove} has the same values stored as another branch.' +
                           '\n\tRemoving the branch to lighten the calculation load')
                     
-    
-    
         # After a full runthrough of a single instruction on all branches, prune the list before re-entering the for loop
         for branch_number in prune_list:
-            print(len(all_branches.branch_list))
             all_branches.delete_branch(branch_number)
-            print(len(all_branches.branch_list))
 
     
     for branch in all_branches.branch_list:
         check_and_print_model(branch.instruction_list, branch)
 
     # Output the full program in Python keyword form and BPF macro form
-    translate_to_bpf_in_c(all_branches.branch_list[0].instruction_list)    
+    translate_to_bpf_in_c(all_branches.instruction_list)    
          
 def create_program(program_list = ""):
     """

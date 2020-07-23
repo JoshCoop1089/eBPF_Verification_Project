@@ -258,14 +258,20 @@ def get_the_locations_and_extend(input_value, target_reg, register_state_helper,
     else:
         list_of_locations, r_s_h = get_the_locations(target_reg, r_s_h)
         
-        # Resize the imm value to the size of the target_reg if needed
-        if extension_length != 0:
-            print("\tExtending the smaller bitVector value to match reg size")
-            list_of_locations[0] = extend_the_number(input_value, extension_length, r_s_h)
-            
+        # Check that any imm value can fit inside the bit size of the register, 
+        # because z3 extend functions also auto apply a modulo operator to force the fit
+        if input_value > 2 ** (r_s_h.reg_bit_width - 1) - 1 or input_value < -1 * (2 ** (r_s_h.reg_bit_width - 1)):
+            r_s_h.problem_flag = r_s_h.instruction_number * -1
+        
         else:
-            list_of_locations[0] = BitVecVal(input_value, r_s_h.reg_bit_width)
-            
+            # Resize the imm value to the size of the target_reg if needed
+            if extension_length != 0:
+                print("\tExtending the smaller bitVector value to match reg size")
+                list_of_locations[0] = extend_the_number(input_value, extension_length, r_s_h)
+                
+            else:
+                list_of_locations[0] = BitVecVal(input_value, r_s_h.reg_bit_width)
+                
     return list_of_locations, r_s_h
 
 def get_register_values(branch_A):
@@ -416,9 +422,6 @@ def check_and_print_model(instruction_list, register_state_helper):
     -------
     None.
     """
-    # print("\nThe full program is:")
-    # for number, ins in enumerate(instruction_list):
-    #     print (str(number) + ":\t" + ins)
     
     s = register_state_helper.solver_object
     problem_flag = register_state_helper.problem_flag
@@ -440,9 +443,6 @@ def check_and_print_model(instruction_list, register_state_helper):
         You should probably go find that bug."""
         
         print("You screwed something up if this ever gets printed")
-   
-    # print("\nThis program would be written as the following for BPF in C:\n")        
-    # translate_to_bpf_in_c(register_state_helper.instruction_list)
     
     # Print out the final values of the registers in the program
     print_current_register_state(register_state_helper)
@@ -494,6 +494,10 @@ def translate_to_bpf_in_c(program_list):
          'BPF_ALU64_REG(BPF_ADD, BPF_REG_3, BPF_REG_2)', 'BPF_MOV64_IMM(BPF_REG_1, -1)', 
          'BPF_ALU64_REG(BPF_ADD, BPF_REG_1, BPF_REG_2)', 'BPF_ALU32_IMM(BPF_ADD, BPF_REG_2, -3)']
     """
+    print("\nThe full program in Python keyword format is:")
+    for number, ins in enumerate(program_list):
+        print (str(number) + ":\t" + ins)
+    
     output = []
 
     for instruction in program_list:
@@ -540,7 +544,8 @@ def translate_to_bpf_in_c(program_list):
             elif keyword == "jneR":
                 instruction = f'BPF_JMP_REG(BPF_JNE, BPF_REG_{target_reg}, BPF_REG_{value}, {offset})'
         output.append(instruction)
-        
+    
+    print("\nThis program would be written as the following for BPF in C:\n")        
     print(output)
     
 def create_register_list(numRegs, register_state_helper):
@@ -813,8 +818,7 @@ def execute_program_v3(all_branches):
                         # Corner case if it fails on the first instruction (ie instruction 0)
                         if branch_of_program.instruction_number == 0:
                             branch_of_program.problem_flag = -1
-                    else:
-                        branch_of_program.problem_flag = instruction_to_execute
+                                            
                 # Now this branch has been either show to be viable or unsat
                 # If it is unsat, send a message back to the main console indicating 
                     # which branch isn't viable, and where on the branch it failed
@@ -825,18 +829,25 @@ def execute_program_v3(all_branches):
                         \nThis branch came from the jump at instruction #{jump_location} \
                         \nThe specific jump instruction was {all_branches.branch_list[0].instruction_list[jump_location]}')
                     prune_list.add(branch_number)
-        
+                else:
+                    branch_of_program.problem_flag = instruction_to_execute
+                        
         # Only check branches after regular instructions, since after immediately after a jump, the branches haven't diverged yet 
         if not new_branch_made:
             # Check the current register values of all branches to see if any of them can be combined
-            branch_pairs = itertools.permutations(all_branches.branch_list, 2)
-            
+            branch_pairs = itertools.combinations(all_branches.branch_list, 2)
             for (branch_A, branch_B) in branch_pairs:
+                # print(branch_A, branch_B)
                 if branch_A.solver_object.check() == sat and branch_B.solver_object.check() == sat \
                     and registers_are_equal(branch_A, branch_B):
                     
                     # Delete the most recently added branch of the pair
-                    prune_list.add(max(branch_A.branch_number, branch_B.branch_number))
+                    branch_to_remove = max(branch_A.branch_number, branch_B.branch_number)
+                    prune_list.add(branch_to_remove)
+                    print(f'\tAfter Instruction #{instruction_to_execute}, ' + 
+                          f'Branch {branch_to_remove} has the same values stored as another branch.' +
+                          '\n\tRemoving the branch to lighten the calculation load')
+                    
     
     
             # After a full runthrough of a single instruction on all branches, prune the list before re-entering the for loop
@@ -845,7 +856,10 @@ def execute_program_v3(all_branches):
     
     for branch in all_branches.branch_list:
         check_and_print_model(branch.instruction_list, branch)
-           
+
+    # Output the full program in Python keyword form and BPF macro form
+    translate_to_bpf_in_c(all_branches.branch_list[0].instruction_list)    
+         
 def create_program(program_list = ""):
     """
     Purpose: Start up the ebpf program and see how far it can run.
@@ -908,7 +922,6 @@ def create_program(program_list = ""):
     """   
     if program_list == "":
         program_list = ["movI8 4 1", "movI8 3 2", "addR 1 2", "jneI8 5 2 2", "addR 1 1", "addI4 3 2", "addR 1 2", "addR 2 1", "exit 0 0"]
-        # program_list = ["movI8 1 0" , "movI8 3 1", "addR 0 1", "movI4 -1 2", "addR 2 1", "addI4 -3 2", "exit 0 0"]
     
     # Loading the program into r_s_h for use in jump commands if needed
     register_state_helper.instruction_list = program_list
@@ -917,5 +930,3 @@ def create_program(program_list = ""):
     all_branches = Branch_Container(register_state_helper)
     
     execute_program_v3(all_branches)
-    
-# create_program()

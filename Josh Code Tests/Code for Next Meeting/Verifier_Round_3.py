@@ -30,7 +30,7 @@ Thursday Meeting Plan
         -- Using JNE, split the possible function conditions
         -- One branch will have an early exit condition
 """
-import itertools
+import itertools, copy
 from z3 import *
 
 # Internal representation for one instance of a register
@@ -70,9 +70,9 @@ class Individual_Branch:
         return "\n"
 
     def copy_branch(self, old_branch):
-        self.solver_object = old_branch.solver_object.translate(old_branch.solver_object.ctx)
-        self.register_history = old_branch.register_history
-        self.instruction_list = old_branch.instruction_list
+        self.solver_object.add(old_branch.solver_object.assertions())
+        self.register_history = copy.deepcopy(old_branch.register_history)
+        self.instruction_list = copy.deepcopy(old_branch.instruction_list)
         self.instruction_number = old_branch.instruction_number
         self.problem_flag = old_branch.problem_flag
     
@@ -203,7 +203,7 @@ def get_the_locations(source_reg, register_state_helper, destination_reg = -1):
     #Extending the destination register sublist to include the new register name
     # Previous if/else clause was to make this line work for one and two reg operations
     r_s_h.register_history[d_r].append(\
-               Register_Info("r%d_%d"%(d_r, r_s_h.instruction_number),\
+               Register_Info("r%d_%d"%(d_r, r_s_h.instruction_number - 1),\
                              r_s_h.reg_bit_width))
     
     # Since the destination subreg list was extended, this references the last element in the extended sublist
@@ -396,7 +396,7 @@ def mov_to_reg(input_value, target_reg, register_state_helper, destination_reg, 
     return mov_function, r_s_h
 
 def exit_instruction(register_state_helper):
-    exit_ins = Bool("exit_%d"%register_state_helper.instruction_number)
+    exit_ins = Bool("exit_%d"%(register_state_helper.instruction_number - 1))
     return exit_ins, register_state_helper 
 
 # Program Setup and Output Functions
@@ -422,7 +422,7 @@ def check_and_print_model(instruction_list, register_state_helper):
     
     s = register_state_helper.solver_object
     problem_flag = register_state_helper.problem_flag
-        
+    print(f'\n--> Output for Branch {register_state_helper.branch_number} <--')    
     if s.check() == sat:
         print("\nThe last instruction attempted was #%d:\n"%(abs(problem_flag)))
         if problem_flag == (len(instruction_list) - 1):
@@ -450,14 +450,15 @@ def check_and_print_model(instruction_list, register_state_helper):
     
 def print_current_register_state(register_state_helper):
     """
-    Quick print function to return the most recent values stored in each register
+    Quick print function to return the most recent values stored in each register of a branch
     """
     print()
     r_s_h = register_state_helper
+    # print(r_s_h)
     current_reg_states = [r_s_h.register_history[i][-1] for i in range(r_s_h.num_Regs)]
-    print("The most recent register values are:")
-    for i, register in enumerate(current_reg_states):
-        print("Register %d:\t"%i, end = " ")
+    print("The register values are currently:")
+    for j, register in enumerate(current_reg_states):
+        print("Register %d:\t"%j, end = " ")
         if "start" in register.reg_name:
             print("Not Initalized")
         else:
@@ -753,10 +754,15 @@ def execute_program_v3(all_branches):
         # Given a branch_container object, iterate through the list of branches, and execute a single instruction on each branch
         for branch_number, branch_of_program in enumerate(all_branches.branch_list):
             branch_of_program.instruction_number += 1
-            print(f'\nLooking at branch {branch_number}')
+            print(f'\nLooking at Branch {branch_number}')
+            
             # A previous jump instruction made this branch need to skip some instructions
             if branch_of_program.problem_flag > instruction_to_execute:
                 new_branch_made = True
+                # branch_of_program.solver_object.check()
+                print(f'\tSkipping instruction {instruction_to_execute} due to jump condition\n')
+                # check_and_print_model(branch_of_program.instruction_list, branch_of_program)        
+                # print_current_register_state(branch_of_program)
                 continue
             
             # Otherwise, execute the next instruction on this particular branch
@@ -776,7 +782,7 @@ def execute_program_v3(all_branches):
                     new_branch_made = True
                     
                     # Reset problem flag in branch_list[0] to 0 to allow it to progress normally
-                    branch_of_program.problem_flag = instruction_to_execute
+                    branch_of_program.problem_flag = instruction_to_execute + 1
                     
                     # Add the new branch to the total list of branches with the instruction counter
                         # to show when the branch was created
@@ -792,9 +798,10 @@ def execute_program_v3(all_branches):
                     
                     # Finally put the constraints from the instruction into the solver
                     branch_of_program.solver_object.add(new_constraints)
-                    print(f'Branch {branch_number} Problem Flag after Instruction {instruction_to_execute}: {branch_of_program.problem_flag}')
+                    # print(f'Branch {branch_number} Problem Flag after Instruction {instruction_to_execute}: {branch_of_program.problem_flag}')
                     # check_and_print_model(branch_of_program.instruction_list, branch_of_program)        
-                    #Always check a solution before continuing
+                   
+                    # Always check a solution before continuing
                     if branch_of_program.solver_object.check() == unsat:
                         
                         # # Roll back the solver to a version before the problematic instructions
@@ -825,7 +832,8 @@ def execute_program_v3(all_branches):
             branch_pairs = itertools.permutations(all_branches.branch_list, 2)
             
             for (branch_A, branch_B) in branch_pairs:
-                if branch_A.solver_object.check() == sat and branch_B.solver_object.check() == sat and registers_are_equal(branch_A, branch_B):
+                if branch_A.solver_object.check() == sat and branch_B.solver_object.check() == sat \
+                    and registers_are_equal(branch_A, branch_B):
                     
                     # Delete the most recently added branch of the pair
                     prune_list.add(max(branch_A.branch_number, branch_B.branch_number))
@@ -837,8 +845,7 @@ def execute_program_v3(all_branches):
     
     for branch in all_branches.branch_list:
         check_and_print_model(branch.instruction_list, branch)
-        
-    
+           
 def create_program(program_list = ""):
     """
     Purpose: Start up the ebpf program and see how far it can run.
@@ -911,4 +918,4 @@ def create_program(program_list = ""):
     
     execute_program_v3(all_branches)
     
-create_program()
+# create_program()

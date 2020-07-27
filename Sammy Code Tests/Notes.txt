@@ -41,3 +41,7 @@ state, instruction -> state
 for all inputs x,
 
 state [program, concrete(x)] should be within the symbolic state [program, symbolic(x)]
+
+7/20:
+=====
+BPF_X has something to do with whether the source register is a variable (BPF_X?) or a constant (BPF_K?)

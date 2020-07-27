@@ -1,0 +1,7 @@
+Josh, choose a concrete example: e.g., 
+suppose r0 is the input. 
+jmpge r0 2;    jump if r0 >= 2 
+mov r1 4 ;     mov a val of 4 into r1
+jmp 1; 		   jump 1 instruction
+mov r1 5; 	   mov a val of 5 into r1
+return r1	   return r1

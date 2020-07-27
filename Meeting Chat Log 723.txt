@@ -1,0 +1,11 @@
+from Josh Cooper to everyone:
+Can people see this if no one is here?
+from Josh Cooper to everyone:
+https://rutgers.webex.com/webappng/sites/rutgers/meeting/info/8923e66127af4ab0b8f81cf323909fd8?siteurl=rutgers&MTID=m08affce8b88752650af3d9903fadb214&meetingAuthToken=QUhTSwAAAASmIFN1hEFLIUzM9864FtgGWIYeEOuasUcglJkNXKHsU%2BlKAO%2BQyQ40fZqKZdB5t55ou%2FLiFhpoNzXVJeF7KG02KxRlb%2BqgBV%2FP2MYdid21KY8mnxCWlBibSoeQ961CcwqP6EM28%2B9rx%2FEgLT8S6%2FKJCmLICVwgznPWsIDqCVtDegUZMcX01MPU%2F%2By6qlDyCOSKj8TSD2L4m8jJ%2Bu3qbURcOe%2BLnDD4iRHnhM9QzLqLbg%3D%3D
+from Srinivas Narayana Ganapathy to everyone:
+Josh, choose a concrete example: e.g., suppose r0 is the input. jmpge r0 2; mov r1 4 ; jmp 1; mov r1 5; return r1
+from Samuel Berger to everyone:
+https://elixir.bootlin.com/linux/latest/source/include/linux/bpf_verifier.h#L43
+
+from Srinivas Narayana Ganapathy to everyone:
+https://elixir.bootlin.com/linux/latest/source/include/linux/tnum.h#L96

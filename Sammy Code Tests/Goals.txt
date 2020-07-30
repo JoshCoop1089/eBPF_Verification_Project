@@ -50,3 +50,19 @@ Range analysis:
 
 7/13:
  - Check verifier safety postcondition FOL against oracle safety postcondition FOL
+
+7/16:
+
+7/20:
+ - Trace BPF_ADD through the verifier and present the path
+ - Construct informal "why"/what each method does
+ 	- Consider how to model this
+
+7/27:
+ - Want to model the abstract algorithm the verifier is attempting to implement
+ - Brainstorm how to model a tnum struct (https://elixir.bootlin.com/linux/latest/source/include/linux/tnum.h#L96)
+ - How to model ranges
+
+7/30:
+ - Model all tnum operations from tnum.c 
+ - Use Z3 bitvectors (?)

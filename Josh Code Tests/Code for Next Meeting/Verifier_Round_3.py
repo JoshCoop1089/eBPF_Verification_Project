@@ -79,12 +79,10 @@ class Individual_Branch:
         self.instruction_list = [""]
         self.instruction_number = 0
         self.problem_flag = 0
-        self.branch_number = 0
     
     def __str__(self):
         print("The current contents of this branch are:")
         print("\tRegister Bit Width: %d"%self.reg_bit_width)
-        print("\tBranch ID: %d"%self.branch_number)
         print("\tCurrent Instruction Number is: %d"%self.instruction_number)
         print("\tProblem Flag's Value': %d"%self.problem_flag)
         print("\tThe register history looks like: \n")
@@ -95,44 +93,6 @@ class Individual_Branch:
             print()
         return "\n"
 
-    def copy_branch(self, old_branch):
-        self.solver_object.add(old_branch.solver_object.assertions())
-        self.register_history = copy.deepcopy(old_branch.register_history)
-        self.instruction_list = copy.deepcopy(old_branch.instruction_list)
-        self.instruction_number = old_branch.instruction_number
-        self.problem_flag = old_branch.problem_flag
-    
-# Any time there is a jump command, a new branch will need to be evaluated.  This will aid in storage and organization
-class Branch_Container:
-    """
-    This will hold a list of Individual_Branch objects, which will represent all needed 
-        branches of the program as dictated by any jump conditions.  Branch pruning 
-        will be attempted based on equivalent register values occuring after an instruction
-        has been executed across all branches
-    """
-    
-    def __init__(self, main_branch):
-        # Main list holding all the Individual_Branch for each branch needed
-        # Main branch is the program path assuming all jumps aren't taken (ie it executes every instruction in the program)
-        self.branch_list = [main_branch] 
-        self.instruction_list = main_branch.instruction_list
-        
-        """
-        If self.list[2] exists, self.instruction_causing_split[2] will hold the jump conditions 
-        instruction number from the main list.  All branches added will assume the jump occured
-        """
-        self.instruction_causing_split = [0]
-        
-    # A jump condition created a new branch to follow
-    def add_branch(self, new_branch, counter):
-        self.branch_list.append(new_branch)
-        self.instruction_causing_split.append(counter)
-        
-    # A branch either matched with another branch and became unneeded, or became unsat
-    def delete_branch(self, branch_to_delete):
-        del self.branch_list[branch_to_delete]
-        del self.instruction_causing_split[branch_to_delete]
-        
         
 # General helper functions for ease of use
 def extend_the_number(value, value_bit_size, register_state_helper):
@@ -230,7 +190,7 @@ def get_the_locations(source_reg, register_state_helper, destination_reg = -1):
     #Extending the destination register sublist to include the new register name
     # Previous if/else clause was to make this line work for one and two reg operations
     r_s_h.register_history[d_r].append(\
-               Register_Info("r%d_%d"%(d_r, r_s_h.instruction_number - 1),\
+               Register_Info("r%d_%d"%(d_r, r_s_h.instruction_number),\
                              r_s_h.reg_bit_width))
     
     # Since the destination subreg list was extended, this references the last element in the extended sublist
@@ -241,7 +201,7 @@ def get_the_locations(source_reg, register_state_helper, destination_reg = -1):
     
     return list_of_locations, r_s_h
 
-def get_the_locations_and_extend(input_value, target_reg, register_state_helper, destination_reg, extension_length):
+def get_the_locations_and_extend(input_value, target_reg, register_state_helper, source_reg, extension_length):
     """
     Sets up properly sized inputs and returns the register locations to put them
 
@@ -256,7 +216,7 @@ def get_the_locations_and_extend(input_value, target_reg, register_state_helper,
     register_state_helper : TYPE : Individual_Branch
         Holds reg_history, instruction_counter, problem_flag information, and bit_size for the registers of the program
         
-    destination_reg : TYPE : boolean
+    source_reg : TYPE : boolean
         States whether to treat input_value as a source reg (True) or an imm value (False).
         
     extension_length : Type : Int
@@ -278,7 +238,7 @@ def get_the_locations_and_extend(input_value, target_reg, register_state_helper,
     r_s_h = register_state_helper
     
     # Two Register Operation
-    if destination_reg:
+    if source_reg:
         list_of_locations, r_s_h = get_the_locations(input_value, r_s_h, target_reg)
     
     # Adding an imm value to a register
@@ -301,43 +261,8 @@ def get_the_locations_and_extend(input_value, target_reg, register_state_helper,
                 
     return list_of_locations, r_s_h
 
-def get_register_values(branch_A):
-    # Get the last known names of all registers in the branch
-    current_reg_A = [branch_A.register_history[i][-1] for i in range(branch_A.num_Regs)]
-    
-    # Get the values from z3 for those register names
-    branch_A_values = [branch_A.solver_object.model()[current_reg_A[i].name] for i in range(len(current_reg_A))]
-    
-    return branch_A_values
-    
-def registers_are_equal(branch_A, branch_B):
-    """
-    Finds the most recent version of all registers in two different branches and compares them
-
-    Parameters
-    ----------
-    branch_A : TYPE : Individual_Branch
-        A single branch of the program after a specific instruction
-    branch_B : TYPE : Individual_Branch
-        A different branch of the program after a specific instruction
-
-    Returns
-    -------
-    TYPE : Boolean
-        Compares the two values of the distinct branches
-
-    """
-    branch_A_values = get_register_values(branch_A)
-    branch_B_values = get_register_values(branch_B)
-    # print(branch_A)
-    # print_current_register_state(branch_A)
-    # print(branch_B)
-    # print_current_register_state(branch_B)
-    
-    return branch_A_values == branch_B_values
-
 # Add Instructions
-def add_two_values(input_value, target_reg, register_state_helper, destination_reg, extension_length):
+def add_two_values(input_value, target_reg, register_state_helper, source_reg, extension_length):
     """
     Generic function to combine two numbers and check for overflows    
 
@@ -352,7 +277,7 @@ def add_two_values(input_value, target_reg, register_state_helper, destination_r
     register_state_helper : TYPE : Individual_Branch
         Holds reg_history, instruction_counter, problem_flag information, and bit_size for the registers of the program
         
-    destination_reg : TYPE : boolean
+    source_reg : TYPE : boolean
         States whether to treat input_value as a source reg (True) or an imm value (False).
         
     extension_length : Type : Int
@@ -370,7 +295,7 @@ def add_two_values(input_value, target_reg, register_state_helper, destination_r
     """
     r_s_h = register_state_helper
 
-    list_of_locations, r_s_h = get_the_locations_and_extend(input_value, target_reg, r_s_h, destination_reg, extension_length)
+    list_of_locations, r_s_h = get_the_locations_and_extend(input_value, target_reg, r_s_h, source_reg, extension_length)
     
     # list_of_locations = [source_val, destination_old_val, destination_new_val]
     # Perform the addition
@@ -388,7 +313,7 @@ def add_two_values(input_value, target_reg, register_state_helper, destination_r
     return add_function, r_s_h
 
 # Mov Instructions
-def mov_to_reg(input_value, target_reg, register_state_helper, destination_reg, extension_length):
+def mov_to_reg(input_value, target_reg, register_state_helper, source_reg, extension_length):
     """
     Generic function to move a value into a register    
 
@@ -403,7 +328,7 @@ def mov_to_reg(input_value, target_reg, register_state_helper, destination_reg, 
     register_state_helper : TYPE : Individual_Branch
         Holds reg_history, instruction_counter, problem_flag information, and bit_size for the registers of the program
         
-    destination_reg : TYPE : boolean
+    source_reg : TYPE : boolean
         States whether to treat input_value as a source reg (True) or an imm value (False).
         
     extension_length : Type : Int
@@ -421,89 +346,113 @@ def mov_to_reg(input_value, target_reg, register_state_helper, destination_reg, 
     """
     r_s_h = register_state_helper
     
-    list_of_locations, r_s_h = get_the_locations_and_extend(input_value, target_reg, r_s_h, destination_reg, extension_length)
+    list_of_locations, r_s_h = get_the_locations_and_extend(input_value, target_reg, r_s_h, source_reg, extension_length)
     
     # list_of_locations = [source_val, destination_old_val, destination_new_val]
     mov_function = list_of_locations[2] == list_of_locations[0]
 
     return mov_function, r_s_h
 
-def jump_command(input_value, target_reg, offset, register_state_helper, destination_reg, extension_length):
+def jump_command(input_value, target_reg, offset, register_state_helper, source_reg, extension_length):
     """
-    There needs to be three parts:
+    Generic function to execute the two paths of a jump instruction    
+
+    Parameters
+    ----------
+    input_value : TYPE: int
+        Will be either the location of the source_reg or the imm value
         
-        Part 1:
-            Execute the program ignoring the jump, and return a set of constraints
-            for any instructions up to and inlcuding the offset
-        Part 2:
-            Execute only the offset instruction, and return its constraints.  
-            Make sure it is referencing the correct old names of the register states
-        Part 3:
-            Address the comparison.  If true, implies part 2 constraints, if false, implies part 1 constraints
+    target_reg : TYPE : int
+        Location where data will be stored after calculation
+        
+    offset : Type : Int
+        How many instructions to jump if the comparison fails
+        
+    register_state_helper : TYPE : Individual_Branch
+        Holds reg_history, instruction_counter, problem_flag information, and bit_size for the registers of the program
+        
+    source_reg : TYPE : boolean
+        States whether to treat input_value as a source reg (True) or an imm value (False).
+        
+    extension_length : Type : Int
+        if the value being added isn't the same size as the register, this value tell how much
+        to either sign or zero extend it
+
+    Returns
+    -------
+    jump_constraints : Type : z3 equation
+        Holds the combination of all constraints due to the jump instruction, the execution
+        of the branches, and the combination of the paths after
+        
+    r_s_h : TYPE: Individual_Branch
+        Holds reg_history, instruction_counter, problem_flag information, now updated from the instruction
+
     """
     r_s_h = register_state_helper
     
-    list_of_locations, r_s_h = get_the_locations_and_extend(input_value, target_reg, r_s_h, destination_reg, extension_length)
+    list_of_locations, r_s_h = get_the_locations_and_extend(input_value, target_reg, r_s_h, source_reg, extension_length)
     
     # I don't feel like rewriting get loc and extend to not always add a new reg value on the 
     # destination register list, so i'll just delete it here
     del r_s_h.register_history[target_reg][-1]
     
-    # list_of_locations = [source_val, destination_old_val, destination_new
+    # This is specifically for jumps with equality, but should be modularized to deal with different jump conditions
+    # list_of_locations = [source_val, destination_old_val, destination_new_val]
     comparison_statement = list_of_locations[0] == list_of_locations[1]
     
     # These two variables should hold the index of the required instructions
     next_ins = r_s_h.instruction_number + 1
-    next_ins_with_offset = r_s_h.instruction_number + 1 + offset
+    next_ins_with_offset = next_ins + offset
 
-    # Get constraints if jump occurs
-    added_from_jump , r_s_h = \
-        create_new_constraints_based_on_instruction_v2(r_s_h.instruction_list[next_ins_with_offset], register_state_helper)
-        
-        
-    # Get constraints if no jump occurs
-    added_from_no_jump = True
-    for instruction_number, instruction in enumerate(r_s_h.instruction_list[next_ins:next_ins_with_offset + 1], r_s_h.instruction_number):
+    # Get the variable names from before the jump occurs
+    before_jump_reg_names = [r_s_h.register_history[i][-1] for i in range(r_s_h.num_Regs)]
+    # print(before_jump_reg_names)
+    
+    # Execute all the instructions between jump and offset
+    jump_constraints = True
+    for instruction_number, instruction in enumerate(r_s_h.instruction_list[next_ins:next_ins_with_offset], next_ins):
+        r_s_h.instruction_number += 1
         instruction_constraints , r_s_h = \
-            create_new_constraints_based_on_instruction_v2(r_s_h.instruction_list[next_ins_with_offset], register_state_helper)
+            create_new_constraints_based_on_instruction_v2(r_s_h.instruction_list[instruction_number], register_state_helper)
+        jump_constraints = And(instruction_constraints, jump_constraints)
+    
+    # Get the register names from after the jump instructions
+    after_branch_reg_names = [r_s_h.register_history[i][-1] for i in range(r_s_h.num_Regs)]
+    # print(after_branch_reg_names)
+    
+    # Create a new instance of every register, using an if then else clause to 
+        # assign it the value based on which branch was taken
+    for reg_number, reg_list in enumerate(r_s_h.register_history):
         
-        added_from_no_jump = And(added_from_no_jump, instruction_constraints)
+        # The register hasn't been initalized yet
+        if len(reg_list) == 1:
+            continue
         
+        name = f'r{reg_number}_{next_ins_with_offset}_after_jump'
+        reg_list.append(Register_Info(name, r_s_h.reg_bit_width))
+        
+        # If (compare, is_true, is_false)
+        name_constraints = If(comparison_statement, reg_list[-1].name == after_branch_reg_names[reg_number].name,\
+                              reg_list[-1].name == before_jump_reg_names[reg_number].name)
+        
+        jump_constraints = And(name_constraints, jump_constraints)
+    
+    # Make the main program skip over the branched instructions
+    r_s_h.problem_flag = next_ins_with_offset
 
-
-    jump_constraints = If(comparison_statement, added_from_no_jump, added_from_jump)
-    r_s_h.problem_flag = r_s_h.instruction_number * -1 + offset
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
     return jump_constraints, register_state_helper
 
 def exit_instruction(register_state_helper):
-    exit_ins = Bool("exit_%d"%(register_state_helper.instruction_number - 1))
+    exit_ins = Bool("exit_%d"%(register_state_helper.instruction_number))
     return exit_ins, register_state_helper 
 
 # Program Setup and Output Functions
-def check_and_print_model(instruction_list, register_state_helper):
+def check_and_print_model(register_state_helper):
     """
     Parameters
     ----------
-    s : Type(z3 Solver Object)
-        Contains the current model to be evaluated and possibly returned
-
-    instruction_list : Type (List of Strings)
-        Holds all the instructions given to a specific model to be printed out
-        
-    program_flag : Type (int)
-        Gives the number of the last attempted instruction in the program
+    register_state_helper: Type : Individual_Branch
+        Contains the solver object, program instructions, and problem flag information
     Returns
     -------
     None.
@@ -511,7 +460,10 @@ def check_and_print_model(instruction_list, register_state_helper):
     
     s = register_state_helper.solver_object
     problem_flag = register_state_helper.problem_flag
-    print(f'\n--> Output for Branch {register_state_helper.branch_number} <--')    
+    if problem_flag > 0:
+        problem_flag = register_state_helper.instruction_number
+    instruction_list = register_state_helper.instruction_list
+    
     if s.check() == sat:
         print("\nThe last instruction attempted was #%d:\n"%(abs(problem_flag)))
         if problem_flag == (len(instruction_list) - 1):
@@ -544,7 +496,7 @@ def print_current_register_state(register_state_helper):
     current_reg_states = [r_s_h.register_history[i][-1] for i in range(r_s_h.num_Regs)]
     print("The register values are currently:")
     for j, register in enumerate(current_reg_states):
-        print("Register %d:\t"%j, end = " ")
+        print("\tRegister %d:\t"%j, end = " ")
         if "start" in register.reg_name:
             print("Not Initalized")
         else:
@@ -563,28 +515,33 @@ def translate_to_bpf_in_c(program_list):
         is valid.
         
     This function will output a list of strings containing the translated versions ready to be
-        copied right into sock_example.c, with a little maintence to remove the '' marks when python 
-        prints out a string.
+        copied right into sock_example.c
         
     Example:
         program_list =
-        ["movI8 0 0", "movI8 0 0", 
-         "movI8 1 2" , "movI8 3 3", 
-         "addR 2 3", "movI8 -1 1", 
-         "addR 2 1", "addI4 -3 2"]
+        	0:	movI8 4 1
+        	1:	movI8 3 2
+        	2:	addR 1 2
+        	3:	jneI8 5 2 2
+        	4:	addR 1 1
+        	5:	addI4 3 2
+        	6:	addR 1 2
+        	7:	addR 2 1
+        	8:	exit 0 0
         
         would print the following to the console:
             
-        ['BPF_MOV64_IMM(BPF_REG_0, 0)', 'BPF_MOV64_IMM(BPF_REG_0, 0)', 
-         'BPF_MOV64_IMM(BPF_REG_2, 1)', 'BPF_MOV64_IMM(BPF_REG_3, 3)', 
-         'BPF_ALU64_REG(BPF_ADD, BPF_REG_3, BPF_REG_2)', 'BPF_MOV64_IMM(BPF_REG_1, -1)', 
-         'BPF_ALU64_REG(BPF_ADD, BPF_REG_1, BPF_REG_2)', 'BPF_ALU32_IMM(BPF_ADD, BPF_REG_2, -3)']
+            BPF_MOV64_IMM(BPF_REG_1, 4), BPF_MOV64_IMM(BPF_REG_2, 3), 
+            BPF_ALU64_REG(BPF_ADD, BPF_REG_2, BPF_REG_1), BPF_JMP_IMM(BPF_JNE, BPF_REG_2, 5, 2), 
+            BPF_ALU64_REG(BPF_ADD, BPF_REG_1, BPF_REG_1), BPF_ALU32_IMM(BPF_ADD, BPF_REG_2, 3), 
+            BPF_ALU64_REG(BPF_ADD, BPF_REG_2, BPF_REG_1), BPF_ALU64_REG(BPF_ADD, BPF_REG_1, BPF_REG_2), 
+            BPF_EXIT_INSN(), 
     """
-    print("\nThe full program in Python keyword format is:")
+    print("The full program in Python keyword format is:\n")
     for number, ins in enumerate(program_list):
-        print (str(number) + ":\t" + ins)
+        print ("\t"+ str(number) + ":\t" + ins)
     
-    output = []
+    output = ""
 
     for instruction in program_list:
         split_ins = instruction.split(" ")
@@ -629,7 +586,9 @@ def translate_to_bpf_in_c(program_list):
             # Comparing a register value to a register value
             elif keyword == "jneR":
                 instruction = f'BPF_JMP_REG(BPF_JNE, BPF_REG_{target_reg}, BPF_REG_{value}, {offset})'
-        output.append(instruction)
+        
+        # Formatting a single output string for direct copy into bpf_step
+        output += instruction + ", "
     
     print("\nThis program would be written as the following for BPF in C:\n")        
     print(output)
@@ -713,7 +672,7 @@ def incorrect_instruction_format(instruction, register_state_helper):
     
     return new_constraints, register_state_helper
    
-def create_new_constraints_based_on_instruction_v2(register_state_helper, counter):
+def create_new_constraints_based_on_instruction_v2(instruction, register_state_helper):
     """
     Parameters
     ----------
@@ -751,8 +710,6 @@ def create_new_constraints_based_on_instruction_v2(register_state_helper, counte
 
     ***Will probably need to rewrite this depending on additions/changes to the basic instruction set***
     """
-    instruction = register_state_helper.instruction_list[counter]
-    # print(f'Attempting to combine Branch {register_state_helper.branch_number} with instruction #{counter}: {instruction}')
 
     split_ins = instruction.split(" ")
     
@@ -761,6 +718,8 @@ def create_new_constraints_based_on_instruction_v2(register_state_helper, counte
         new_constraints, register_state_helper = incorrect_instruction_format(instruction, register_state_helper)
 
     else:
+        # print("Valid Length, assessing structure for instruction #: %d" %register_state_helper.instruction_number)
+        # print(split_ins)
         keyword = split_ins[0]
         value = int(split_ins[1])
         target_reg = int(split_ins[2])
@@ -808,141 +767,82 @@ def create_new_constraints_based_on_instruction_v2(register_state_helper, counte
         elif len(split_ins) == 4:
             offset = int(split_ins[3])
             
-            # Jump instructions all return a problem flag higher than the instruction counter, 
-            # telling the program to create a new branch.  Since we're adding all branches, the actual comparison doesn't matter
-            if keyword == "jneI4" or keyword == "jneI8" or keyword == "jneR":
-                new_constraints = True
-                register_state_helper.problem_flag = register_state_helper.instruction_number + offset
-                               
+            # Comparing an undersized outside value to a register
+            if keyword == "jneI4":
+                new_constraints , register_state_helper = \
+                    jump_command(value, target_reg, offset, register_state_helper, False, 4)
+                    
+            # Comparing a register sized outside value to a register
+            elif keyword == "jneI8": 
+                new_constraints , register_state_helper = \
+                    jump_command(value, target_reg, offset, register_state_helper, False, 0)
+                
+            # Comparing a register value to another register
+            elif keyword == "jneR": 
+                new_constraints , register_state_helper = \
+                    jump_command(value, target_reg, offset, register_state_helper, True, 0)
+         
             # Keyword doesn't match known functions
             else:
                 new_constraints, register_state_helper = incorrect_instruction_format(instruction, register_state_helper)
         
     return new_constraints, register_state_helper
 
-def execute_program_v3(all_branches):
-    """
-    Parameters
-    ----------
-    all_branches : TYPE :Branch_Container
-        Will hold a list of all created branches for the program.  
-        Each branch will be a Individual_Branch type maintaining its own z3 solver and problem flags
-
-    Returns
-    -------
-    A whole bunch of shiny print statements telling the outcome of attempting to add all instructions
-        and take all branches.
-
-
-    Some bugs to be aware of:
-        jump commands aren't checked to see if the offset is within the valid numbers for the instruction list
-    """
-    total_number_of_instructions = len(all_branches.branch_list[0].instruction_list)
-    instruction_to_execute = -1
-    while instruction_to_execute < total_number_of_instructions - 1:
-        instruction_to_execute += 1
-        prune_list = set()
-        new_branch_made = False
+def execute_program_v2(register_state_helper):
+ 
+    # Add instructions from the program list to the solver
+    for instruction_number, instruction in enumerate(register_state_helper.instruction_list):
         
-        # Given a branch_container object, iterate through the list of branches, and execute a single instruction on each branch
-        for branch_number, branch_of_program in enumerate(all_branches.branch_list):
-            branch_of_program.instruction_number += 1
-            # print(f'\nLooking at Branch {branch_number}')
+        register_state_helper.instruction_number = instruction_number
+        
+        # A jump command has independantly executed some instructions, do not execute this instruction
+        if register_state_helper.problem_flag > instruction_number:
+            continue
+        
+        print("Attempting to combine solver with instruction #%d: %s"%(instruction_number, instruction))
+        new_constraints, register_state_helper = \
+            create_new_constraints_based_on_instruction_v2(instruction, register_state_helper)
+        
+        # Debug just in case
+        # print(register_state_helper)
+        
+        #Allow for rollback in event of problematic addition
+        register_state_helper.solver_object.push()
+        
+        # Finally put the constraints from the instruction into the solver
+        register_state_helper.solver_object.add(new_constraints)
+                
+        #Always check a solution before returning to the main function
+        if register_state_helper.solver_object.check() == unsat:
+
+            # Roll back the solver to a version before the problematic instructions
+            register_state_helper.solver_object.pop()
+        
+            # Special return value to tell the main test program that an error has occured
+            register_state_helper.problem_flag = register_state_helper.instruction_number * -1
             
-            # A previous jump instruction made this branch need to skip some instructions
-            if branch_of_program.problem_flag > instruction_to_execute:
-                new_branch_made = True
-                # print(f'\tSkipping instruction {instruction_to_execute} due to jump condition\n')
-                # check_and_print_model(branch_of_program.instruction_list, branch_of_program)        
-                # print_current_register_state(branch_of_program)
-                continue
+            # Corner case if it fails on the first instruction (ie instruction 0)
+            if register_state_helper.instruction_number == 0:
+                register_state_helper.problem_flag = -1
             
-            # Otherwise, execute the next instruction on this particular branch
-            else:
+        # Special register_state_helper.problem_flag returns:
+            # problem_flag < 0 --> an instruction caused an unsat solution
+            # problem_flag > instruction_counter --> a jump instruction is pushing the list forward
+        
+        # Problem_flag < 0 means that a specific instruction caused a problem, 
+        # and we're exiting without finishing all the instructions in the program
+        if register_state_helper.problem_flag < 0:
+            print("\nThe program encountered an error on instruction #%s"%abs(register_state_helper.problem_flag))
+            print("\t-->  " + register_state_helper.instruction_list[abs(register_state_helper.problem_flag)] + "  <--")
+            print("The last viable solution before the problem instruction is shown below:")
+            break
 
-                new_constraints, branch_of_program = \
-                    create_new_constraints_based_on_instruction_v2(branch_of_program, instruction_to_execute)
-                    
-                # This will be triggered if the instruction just attempted was a jump command
-                if branch_of_program.problem_flag > instruction_to_execute:
-                    # print("\n--> Creating a new branch starting at instruction #%d <--\n"%instruction_to_execute)
-                    # Create a new branch with the problem flag set as the large value
-                    # This will represent the branch taken when the jump is executed
-                    new_branch = Individual_Branch(branch_of_program.num_Regs, branch_of_program.reg_bit_width)
-                    new_branch.copy_branch(branch_of_program)
-                    new_branch.branch_number = len(all_branches.branch_list)
-                    new_branch_made = True
-                    
-                    # Reset problem flag in branch_list[0] to 0 to allow it to progress normally
-                    branch_of_program.problem_flag = instruction_to_execute + 1
-                    
-                    # Add the new branch to the total list of branches with the instruction counter
-                        # to show when the branch was created
-                    all_branches.add_branch(new_branch, instruction_to_execute)
-                    
-                    # Exit the for loop to reset the internal values looping over all_branches
-                    # This currently bugs out if there is a jump instruction early in the list of branches,
-                    # but there are other branches to check after the new branch is created
-                    break
-                 
-                # Non jump instruction executed, check for viable model after new instruction added
-                else:
-                    # Finally put the constraints from the instruction into the solver
-                    branch_of_program.solver_object.add(new_constraints)
-                    # print(f'Branch {branch_number} Problem Flag after Instruction {instruction_to_execute}: {branch_of_program.problem_flag}')
-                    # check_and_print_model(branch_of_program.instruction_list, branch_of_program)        
-                   
-                    # Always check a solution before continuing
-                    if branch_of_program.solver_object.check() == unsat:
-
-                        # Special return value to tell the main test program that an error has occured
-                        branch_of_program.problem_flag = branch_of_program.instruction_number * -1
-                        
-                        # Corner case if it fails on the first instruction (ie instruction 0)
-                        if branch_of_program.instruction_number == 0:
-                            branch_of_program.problem_flag = -1
-                                            
-                # Now this branch has been either show to be viable or unsat
-                # If it is unsat, send a message back to the main console indicating 
-                    # which branch isn't viable, and where on the branch it failed
-                if branch_of_program.problem_flag < 0:
-                    jump_location = all_branches.instruction_causing_split[branch_number]
-                    
-                    # print(f'\nBranch {branch_number} failed to find a viable solution.  \
-                        # \nThis branch came from the jump at instruction #{jump_location} \
-                        # \nThe specific jump instruction was {all_branches.branch_list[0].instruction_list[jump_location]}')
-                    prune_list.add(branch_number)
-                else:
-                    branch_of_program.problem_flag = instruction_to_execute
-                        
-        # Only check branches after regular instructions, since after immediately after a jump, the branches haven't diverged yet 
-        if not new_branch_made:
-            # Check the current register values of all branches to see if any of them can be combined
-            branch_pairs = itertools.combinations(all_branches.branch_list, 2)
-            for (branch_A, branch_B) in branch_pairs:
-                # print(branch_A, branch_B)
-                if branch_A.solver_object.check() == sat and branch_B.solver_object.check() == sat \
-                    and registers_are_equal(branch_A, branch_B):
-                    
-                    # Delete the most recently added branch of the pair
-                    branch_to_remove = max(branch_A.branch_number, branch_B.branch_number)
-                    prune_list.add(branch_to_remove)
-                    # print(f'\tAfter Instruction #{instruction_to_execute}, ' + 
-                          # f'Branch {branch_to_remove} has the same values stored as another branch.' +
-                          # '\n\tRemoving the branch to lighten the calculation load')
-                    
-        # After a full runthrough of a single instruction on all branches, prune the list before re-entering the for loop
-        for branch_number in prune_list:
-            all_branches.delete_branch(branch_number)
-
+    check_and_print_model(register_state_helper)
     
-    for branch in all_branches.branch_list:
-        check_and_print_model(branch.instruction_list, branch)
-
     # Output the full program in Python keyword form and BPF macro form
-    translate_to_bpf_in_c(all_branches.instruction_list)    
+    translate_to_bpf_in_c(register_state_helper.instruction_list)
          
-def create_program(program_list = ""):
+def create_program(program_list = "", num_Regs = 4, reg_bit_width = 8):
     """
     Purpose: Start up the ebpf program and see how far it can run.
     Current Default Conditions make 4 registers, each with a bitWidth of 8 to allow
@@ -953,6 +853,12 @@ def create_program(program_list = ""):
     program_list : Type(List of Strings)
         Using special keyword number string instructions, gives a list of the instructions to be attempted by the solver
         If left blank, will use built in test program, as opposed to user input
+        
+    num_Regs : Type : Int
+        Defines how many registers the program has access to.  Default value is 4
+        
+    reg_bit_width : Type : Int
+        Defines how large each register is.  Default value is 8 bits
 
     Returns
     -------
@@ -962,8 +868,8 @@ def create_program(program_list = ""):
     start_time = time.time()
     # Define the number and size of the registers in the program
     # Future update will change this to be defined by user input to cmd line
-    num_Regs = 4
-    reg_bit_width = 8
+    # num_Regs = 4
+    # reg_bit_width = 8
     
     # Setting up the container for holding register history, register sizes, and instruction counter
     register_state_helper = Individual_Branch(num_Regs, reg_bit_width)
@@ -998,10 +904,7 @@ def create_program(program_list = ""):
     # Loading the program into r_s_h for use in jump commands if needed
     register_state_helper.instruction_list = program_list
     
-    # Making the main holder of any distinct branches that need to be evaluated for the program
-    all_branches = Branch_Container(register_state_helper)
-    
-    execute_program_v3(all_branches)
+    execute_program_v2(register_state_helper)    
     end_time = time.time()
     print('\n\n-->  Elapsed Time: %0.3f seconds  <--' %(end_time-start_time))
     

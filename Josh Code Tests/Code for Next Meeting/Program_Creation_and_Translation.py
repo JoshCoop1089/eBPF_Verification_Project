@@ -22,6 +22,9 @@ Originally, it allowed for exit instructions to be used as a randomly added inst
     
     -- Could probably get around this by setting up some type of randomized weighting system
         on a per command basis
+
+Note:
+    Should probably figure out a way to force input values to be small to not lead to many different unsat conditions
 """
 import random
 

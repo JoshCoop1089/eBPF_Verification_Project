@@ -3,17 +3,43 @@
 Created on Wed Jul 22 17:52:25 2020
 
 @author: joshc
-"""
 
-# -*- coding: utf-8 -*-
-"""
-Created on Thu Jul 16 15:38:07 2020
+Summary of BPF Functions:
+    add_two_values:
+        This is the general function used to implement the various versions of
+        the BPF_ADD opcode.  It handles reg/reg, and reg/imm value additions.
+        The function also adds in automatic overflow and underflow protection
+        every time it is called.  This logic should be extendable to most
+        arithmetic functions (SUB, MULT, DIV) with only minor changes.
+    
+    mov_to_reg:
+        Handles the logic of setting a register to a specific value, be it from 
+        another register, or passed in as an immediate value.
+        
+    extend_the_nums:
+        This function is the guarantee that any value used inside the model will
+        match the size of the register.  If the number is greater than 0, this
+        function will zero extend the bitvector representation, and if the original
+        value is below 0, it will perform a proper sign extension.
+        
+    get_the_locations_and_extend:
+        This function deals with gathering the names of registers used in other
+        calulations, and will automatically check any immediate values passed in
+        to see whether they are valid numbers for the specific size of the register
+        and also to zero/sign extend any value so it matches the bit size of the
+        register.
 
-@author: joshc
-"""
+Ease of Use and Output Functions:
+    print_current_register_state:
+        Queries the z3 model to find the current values assigned to any register.
+        Will report if a register has not been used yet in the current run of the program.
+    
+    translate_to_bpf_in_c:
+        Does an instruction by instruction translation into the C language macros
+        used in BPF-Step to allow easier checking of sample programs for output accuracy
 
-"""
-Thursday Meeting Plan
+
+General Plan
 
 1) Create sample eBPF program as guide
     -- Program has the following elements finished--
@@ -28,9 +54,8 @@ Thursday Meeting Plan
     -- In progress -- 
     e) Branching
         -- Using JNE, split the possible function conditions
-        -- One branch will have an early exit condition
 """
-import itertools, copy
+import itertools, copy, time
 from z3 import *
 
 # Internal representation for one instance of a register
@@ -57,10 +82,11 @@ class Individual_Branch:
         self.branch_number = 0
     
     def __str__(self):
-        print("The current contents of the helper_bundle are:")
+        print("The current contents of this branch are:")
         print("\tRegister Bit Width: %d"%self.reg_bit_width)
-        print("\tThe Current Instruction Number is: %d"%self.instruction_number)
-        print("\tProblem Flag's Value is': %d"%self.problem_flag)
+        print("\tBranch ID: %d"%self.branch_number)
+        print("\tCurrent Instruction Number is: %d"%self.instruction_number)
+        print("\tProblem Flag's Value': %d"%self.problem_flag)
         print("\tThe register history looks like: \n")
         r_h = self.register_history
         for reg in r_h:
@@ -267,7 +293,7 @@ def get_the_locations_and_extend(input_value, target_reg, register_state_helper,
         else:
             # Resize the imm value to the size of the target_reg if needed
             if extension_length != 0:
-                print("\tExtending the smaller bitVector value to match reg size")
+                # print("\tExtending the smaller bitVector value to match reg size")
                 list_of_locations[0] = extend_the_number(input_value, extension_length, r_s_h)
                 
             else:
@@ -401,6 +427,65 @@ def mov_to_reg(input_value, target_reg, register_state_helper, destination_reg, 
     mov_function = list_of_locations[2] == list_of_locations[0]
 
     return mov_function, r_s_h
+
+def jump_command(input_value, target_reg, offset, register_state_helper, destination_reg, extension_length):
+    """
+    There needs to be three parts:
+        
+        Part 1:
+            Execute the program ignoring the jump, and return a set of constraints
+            for any instructions up to and inlcuding the offset
+        Part 2:
+            Execute only the offset instruction, and return its constraints.  
+            Make sure it is referencing the correct old names of the register states
+        Part 3:
+            Address the comparison.  If true, implies part 2 constraints, if false, implies part 1 constraints
+    """
+    r_s_h = register_state_helper
+    
+    list_of_locations, r_s_h = get_the_locations_and_extend(input_value, target_reg, r_s_h, destination_reg, extension_length)
+    
+    # I don't feel like rewriting get loc and extend to not always add a new reg value on the 
+    # destination register list, so i'll just delete it here
+    del r_s_h.register_history[target_reg][-1]
+    
+    # list_of_locations = [source_val, destination_old_val, destination_new
+    comparison_statement = list_of_locations[0] == list_of_locations[1]
+    
+    # These two variables should hold the index of the required instructions
+    next_ins = r_s_h.instruction_number + 1
+    next_ins_with_offset = r_s_h.instruction_number + 1 + offset
+
+    # Get constraints if jump occurs
+    added_from_jump , r_s_h = \
+        create_new_constraints_based_on_instruction_v2(r_s_h.instruction_list[next_ins_with_offset], register_state_helper)
+        
+        
+    # Get constraints if no jump occurs
+    added_from_no_jump = True
+    for instruction_number, instruction in enumerate(r_s_h.instruction_list[next_ins:next_ins_with_offset + 1], r_s_h.instruction_number):
+        instruction_constraints , r_s_h = \
+            create_new_constraints_based_on_instruction_v2(r_s_h.instruction_list[next_ins_with_offset], register_state_helper)
+        
+        added_from_no_jump = And(added_from_no_jump, instruction_constraints)
+        
+
+
+    jump_constraints = If(comparison_statement, added_from_no_jump, added_from_jump)
+    r_s_h.problem_flag = r_s_h.instruction_number * -1 + offset
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    return jump_constraints, register_state_helper
 
 def exit_instruction(register_state_helper):
     exit_ins = Bool("exit_%d"%(register_state_helper.instruction_number - 1))
@@ -641,6 +726,9 @@ def create_new_constraints_based_on_instruction_v2(register_state_helper, counte
    
     Returns
     -------
+    new_constraints : TYPE : z3 Boolean
+        Collection of new conjunctions to use with the main function
+        
     register_state_helper : TYPE : Individual_Branch
         Holds reg_history, instruction_counter, problem_flag information, now updated from the instruction
 
@@ -664,7 +752,7 @@ def create_new_constraints_based_on_instruction_v2(register_state_helper, counte
     ***Will probably need to rewrite this depending on additions/changes to the basic instruction set***
     """
     instruction = register_state_helper.instruction_list[counter]
-    print(f'Attempting to combine Branch {register_state_helper.branch_number} with instruction #{counter}: {instruction}')
+    # print(f'Attempting to combine Branch {register_state_helper.branch_number} with instruction #{counter}: {instruction}')
 
     split_ins = instruction.split(" ")
     
@@ -672,7 +760,6 @@ def create_new_constraints_based_on_instruction_v2(register_state_helper, counte
     if len(split_ins) < 3 or len(split_ins) > 4:
         new_constraints, register_state_helper = incorrect_instruction_format(instruction, register_state_helper)
 
-        
     else:
         keyword = split_ins[0]
         value = int(split_ins[1])
@@ -760,12 +847,12 @@ def execute_program_v3(all_branches):
         # Given a branch_container object, iterate through the list of branches, and execute a single instruction on each branch
         for branch_number, branch_of_program in enumerate(all_branches.branch_list):
             branch_of_program.instruction_number += 1
-            print(f'\nLooking at Branch {branch_number}')
+            # print(f'\nLooking at Branch {branch_number}')
             
             # A previous jump instruction made this branch need to skip some instructions
             if branch_of_program.problem_flag > instruction_to_execute:
                 new_branch_made = True
-                print(f'\tSkipping instruction {instruction_to_execute} due to jump condition\n')
+                # print(f'\tSkipping instruction {instruction_to_execute} due to jump condition\n')
                 # check_and_print_model(branch_of_program.instruction_list, branch_of_program)        
                 # print_current_register_state(branch_of_program)
                 continue
@@ -778,7 +865,7 @@ def execute_program_v3(all_branches):
                     
                 # This will be triggered if the instruction just attempted was a jump command
                 if branch_of_program.problem_flag > instruction_to_execute:
-                    print("\n--> Creating a new branch starting at instruction #%d <--\n"%instruction_to_execute)
+                    # print("\n--> Creating a new branch starting at instruction #%d <--\n"%instruction_to_execute)
                     # Create a new branch with the problem flag set as the large value
                     # This will represent the branch taken when the jump is executed
                     new_branch = Individual_Branch(branch_of_program.num_Regs, branch_of_program.reg_bit_width)
@@ -821,9 +908,9 @@ def execute_program_v3(all_branches):
                 if branch_of_program.problem_flag < 0:
                     jump_location = all_branches.instruction_causing_split[branch_number]
                     
-                    print(f'\nBranch {branch_number} failed to find a viable solution.  \
-                        \nThis branch came from the jump at instruction #{jump_location} \
-                        \nThe specific jump instruction was {all_branches.branch_list[0].instruction_list[jump_location]}')
+                    # print(f'\nBranch {branch_number} failed to find a viable solution.  \
+                        # \nThis branch came from the jump at instruction #{jump_location} \
+                        # \nThe specific jump instruction was {all_branches.branch_list[0].instruction_list[jump_location]}')
                     prune_list.add(branch_number)
                 else:
                     branch_of_program.problem_flag = instruction_to_execute
@@ -840,9 +927,9 @@ def execute_program_v3(all_branches):
                     # Delete the most recently added branch of the pair
                     branch_to_remove = max(branch_A.branch_number, branch_B.branch_number)
                     prune_list.add(branch_to_remove)
-                    print(f'\tAfter Instruction #{instruction_to_execute}, ' + 
-                          f'Branch {branch_to_remove} has the same values stored as another branch.' +
-                          '\n\tRemoving the branch to lighten the calculation load')
+                    # print(f'\tAfter Instruction #{instruction_to_execute}, ' + 
+                          # f'Branch {branch_to_remove} has the same values stored as another branch.' +
+                          # '\n\tRemoving the branch to lighten the calculation load')
                     
         # After a full runthrough of a single instruction on all branches, prune the list before re-entering the for loop
         for branch_number in prune_list:
@@ -872,7 +959,7 @@ def create_program(program_list = ""):
     None.
 
     """
-    
+    start_time = time.time()
     # Define the number and size of the registers in the program
     # Future update will change this to be defined by user input to cmd line
     num_Regs = 4
@@ -915,3 +1002,7 @@ def create_program(program_list = ""):
     all_branches = Branch_Container(register_state_helper)
     
     execute_program_v3(all_branches)
+    end_time = time.time()
+    print('\n\n-->  Elapsed Time: %0.3f seconds  <--' %(end_time-start_time))
+    
+# create_program()

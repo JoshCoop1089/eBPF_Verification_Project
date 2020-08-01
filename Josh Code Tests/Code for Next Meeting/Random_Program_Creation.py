@@ -86,7 +86,7 @@ def get_source_values(register_size, initialized_registers):
 def random_program_creator(number_of_instructions, number_of_registers, register_size):
     """
     Create a randomly created, possibly valid (might not be satisfiable) eBPF instruction
-        list formatted for use in Verifier_Round_3.py
+        list formatted for use in FOL_Verifier.py
 
     Parameters
     ----------
@@ -124,12 +124,10 @@ def random_program_creator(number_of_instructions, number_of_registers, register
         while instruction_number == number_of_instructions - 2 and instruction_type == "jne":
             instruction_type = random.choice(current_allowed_instructions)
 
-        # Choose the source value/register
         source_value, source_value_keyword = get_source_values(register_size, initialized_registers)
         
         # mov commands can use any register as the destination
         if instruction_type == "mov":
-            # Choose the destination register with zero indexing 
             destination_value = random.randint(0, number_of_registers - 1)
 
             # Add the register number into the list of initialized registers
@@ -140,7 +138,6 @@ def random_program_creator(number_of_instructions, number_of_registers, register
         else:
             destination_value = random.choice(initialized_registers)
         
-        # Create a properly formatted instruction string
         instruction = f'{instruction_type}{source_value_keyword} {source_value} {destination_value}'
         
         # Find an offset value for jump instructions that is within the bounds of the total number of instructions
@@ -200,23 +197,16 @@ def translate_to_bpf_in_c(program_list):
         
         if len(split_ins) == 3:
         # Add Instuctions
-            # Adding an undersized outside value to a register value
             if keyword == "addI4":
                 instruction = f'BPF_ALU32_IMM(BPF_ADD, BPF_REG_{target_reg}, {value})'
-            # Adding a register sized outside value to a register value
             elif keyword == "addI8":
                 instruction = f'BPF_ALU64_IMM(BPF_ADD, BPF_REG_{target_reg}, {value})'
-                
-            # Adding a register value to a register value (value variable is being treated as the location of the source_register)
             elif keyword == "addR":
                 instruction = f'BPF_ALU64_REG(BPF_ADD, BPF_REG_{target_reg}, BPF_REG_{value})'
             
         # Mov Instructions
-            # Moving an outside value into a register (there is no mov32_imm definied in libbpf.h in bpf_step)
             elif keyword == "movI4" or keyword == "movI8":
                 instruction = f'BPF_MOV64_IMM(BPF_REG_{target_reg}, {value})'
-
-            # Moving a register value into another register (value variable is being treated as the location of the source_register)
             elif keyword == "movR":
                 instruction = f'BPF_MOV64_REG(BPF_REG_{target_reg}, BPF_REG_{value})'
 
@@ -227,12 +217,8 @@ def translate_to_bpf_in_c(program_list):
         # Format for jump commands
         elif len(split_ins) == 4:
             offset = int(split_ins[3])
-            
-            # Comparing an outside value to a register value (there is no jmp_imm_32 in bpf_step)
             if keyword == "jneI4" or keyword == "jneI8":
                 instruction = f'BPF_JMP_IMM(BPF_JNE, BPF_REG_{target_reg}, {value}, {offset})'
-            
-            # Comparing a register value to a register value
             elif keyword == "jneR":
                 instruction = f'BPF_JMP_REG(BPF_JNE, BPF_REG_{target_reg}, BPF_REG_{value}, {offset})'
         

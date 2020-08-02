@@ -54,7 +54,6 @@ class Register_Info:
     def __init__(self, name, reg_bit_size,  reg_type = ""):
         # Not using this yet, because just dealing with arithmetic on numbers, not pointers
         # self.reg_type = reg_type
-
         self.name = BitVec(name, reg_bit_size)
         self.reg_name = name 
 
@@ -85,7 +84,6 @@ class Individual_Branch:
                 print("\t" + reg_instance.reg_name, end = " ")
             print()
         return "\n"
-
         
 # General helper functions for ease of use
 def extend_the_number(value, value_bit_size, register_state_helper):
@@ -159,8 +157,7 @@ def get_the_locations(source_reg, register_state_helper, destination_reg = -1):
     r_s_h = register_state_helper
     s_r = source_reg
     source_val = r_s_h.register_history[s_r][-1].name        
-    
-    
+        
     # For Single Register Operations, destination register is the source register
     # Uses the default val from the function to indicate single reg operation
     if destination_reg == -1:
@@ -455,8 +452,7 @@ def print_current_register_state(register_state_helper):
     """
     Quick print function to return the most recent values stored in each register
     """
-    print()
-    
+    print()    
     r_s_h = register_state_helper
     r_s_h.solver_object.check()
     current_reg_states = [r_s_h.register_history[i][-1] for i in range(r_s_h.num_Regs)]
@@ -506,7 +502,6 @@ def translate_to_bpf_in_c(program_list):
         print ("\t"+ str(number) + ":\t" + ins)
     
     output = ""
-
     for instruction in program_list:
         split_ins = instruction.split(" ")
         keyword = split_ins[0]
@@ -546,16 +541,13 @@ def translate_to_bpf_in_c(program_list):
     print("\nThis program would be written as the following for BPF in C:\n")        
     print(output)
     
-def create_register_list(numRegs, register_state_helper):
+def create_register_list(register_state_helper):
     """
     Purpose: Create the register history list used to hold all register changes 
     for SSA naming and assignment scheme
 
     Parameters
-    ----------
-    numRegs : TYPE: (int)
-        The number of registers the user wishes to model
-        
+    ----------        
     register_state_helper : Type (Individual_Branch)
         generic container holding program variables for referencing
 
@@ -588,7 +580,7 @@ def create_register_list(numRegs, register_state_helper):
         which caused a problem
     """      
     register_state_helper.register_history = \
-        [[Register_Info("r"+str(i) + "_start", register_state_helper.reg_bit_width)] for i in range(numRegs)]
+        [[Register_Info("r"+str(i) + "_start", register_state_helper.reg_bit_width)] for i in range(register_state_helper.num_Regs)]
     
     return register_state_helper  
 
@@ -654,67 +646,55 @@ def create_new_constraints_based_on_instruction_v2(instruction, register_state_h
         (treated as an int)     fourth: offset of instructions if comparison fails
 
     ***Will probably need to rewrite this depending on additions/changes to the basic instruction set***
-    """
-    
+    """    
     print("Attempting to combine solver with instruction #%d: %s"%(register_state_helper.instruction_number, instruction))
-
-
 
     split_ins = instruction.split(" ")
     
     if len(split_ins) < 3 or len(split_ins) > 4:
         new_constraints, register_state_helper = incorrect_instruction_format(instruction, register_state_helper)
-
     else:
         keyword = split_ins[0]
-        value = int(split_ins[1])
+        input_value = int(split_ins[1])
         target_reg = int(split_ins[2])
+        
+        # Identify input_value type
+        if "I4" in keyword:
+            source_reg = False
+            extension_length = register_state_helper.reg_bit_width//2
+        elif "I8" in keyword:
+            source_reg = False
+            extension_length = 0
+        elif "R" in keyword:
+            source_reg = True
+            extension_length = 0
         
         # Format for add, mov, and exit commands
         if len(split_ins) == 3:
             
-            # Add Instuctions
-            if keyword == "addI4":
-                new_constraints, register_state_helper = add_two_values(value, target_reg, register_state_helper, False, 4)
-            elif keyword == "addI8":
-                new_constraints, register_state_helper = add_two_values(value, target_reg, register_state_helper, False, 0)
-            elif keyword == "addR":
-                new_constraints, register_state_helper = add_two_values(value, target_reg, register_state_helper, True, 0)
-            
-            # Mov Instructions
-            elif keyword == "movI4":
-                new_constraints, register_state_helper = mov_to_reg(value, target_reg, register_state_helper, False, 4)
-            elif keyword == "movI8":
-                new_constraints, register_state_helper = mov_to_reg(value, target_reg, register_state_helper, False, 0)
-            elif keyword == "movR":
-                new_constraints, register_state_helper = mov_to_reg(value, target_reg, register_state_helper, True, 0)
-                
-            # Exit command
+            if "add" in keyword:
+                new_constraints, register_state_helper = add_two_values(input_value, target_reg, register_state_helper, source_reg, extension_length)
+            elif "mov" in keyword:
+                new_constraints, register_state_helper = mov_to_reg(input_value, target_reg, register_state_helper, source_reg, extension_length)
             elif keyword == "exit":
                 new_constraints, register_state_helper = exit_instruction(register_state_helper)
              
             # Keyword doesn't match known functions
             else:
                 new_constraints, register_state_helper = incorrect_instruction_format(instruction, register_state_helper)
-
-                
+   
         # Format for jump commands
         elif len(split_ins) == 4:
             offset = int(split_ins[3])
             
-            if keyword == "jneI4":
+            if "jne" in keyword:
                 new_constraints , register_state_helper = \
-                    jump_command(value, target_reg, offset, register_state_helper, False, 4)
-            elif keyword == "jneI8": 
-                new_constraints , register_state_helper = \
-                    jump_command(value, target_reg, offset, register_state_helper, False, 0)
-            elif keyword == "jneR": 
-                new_constraints , register_state_helper = \
-                    jump_command(value, target_reg, offset, register_state_helper, True, 0)
+                    jump_command(input_value, target_reg, offset, register_state_helper, source_reg, extension_length)
          
             # Keyword doesn't match known functions
             else:
                 new_constraints, register_state_helper = incorrect_instruction_format(instruction, register_state_helper)
+    
     # Debugging helpers
     # print(register_state_helper)
     # print_current_register_state(register_state_helper)    
@@ -789,11 +769,13 @@ def create_program(program_list = "", num_Regs = 4, reg_bit_width = 8):
     if program_list == "":
         program_list = ["movI8 4 1", "movI8 3 2", "addR 1 2", "jneI8 5 2 2", "addR 1 1", "addI4 3 2", "addR 1 2", "addR 2 1", "exit 0 0"]
     
-    # Setting up the container for holding register history, register sizes, and instruction counter
+    # Setting up the container for holding register history, instruction lists, and various flags
     register_state_helper = Individual_Branch(num_Regs, reg_bit_width)
-    register_state_helper = create_register_list(num_Regs, register_state_helper)
+    register_state_helper = create_register_list(register_state_helper)
     register_state_helper.instruction_list = program_list
     
     execute_program_v2(register_state_helper)    
     end_time = time.time()
     print('\n\n-->  Elapsed Time: %0.3f seconds  <--' %(end_time-start_time))
+    
+create_program()

@@ -115,7 +115,6 @@ def random_program_creator(number_of_instructions, number_of_registers, register
     # Randomly generate the rest of the instructions
     for instruction_number in range(1,number_of_instructions-1):
         
-        # Choose the instruction type (modify this list when new keywords are added)
         current_allowed_instructions = ["add", "mov", "jne"]
         instruction_type = random.choice(current_allowed_instructions)
         
@@ -130,7 +129,6 @@ def random_program_creator(number_of_instructions, number_of_registers, register
         if instruction_type == "mov":
             destination_value = random.randint(0, number_of_registers - 1)
 
-            # Add the register number into the list of initialized registers
             if destination_value not in initialized_registers:
                 initialized_registers.append(destination_value)
                 
@@ -188,27 +186,26 @@ def translate_to_bpf_in_c(program_list):
         print (str(number) + ":\t" + ins)
     
     output = ""
-
     for instruction in program_list:
         split_ins = instruction.split(" ")
         keyword = split_ins[0]
-        value = split_ins[1]
+        input_value = split_ins[1]
         target_reg = split_ins[2]
         
         if len(split_ins) == 3:
         # Add Instuctions
             if keyword == "addI4":
-                instruction = f'BPF_ALU32_IMM(BPF_ADD, BPF_REG_{target_reg}, {value})'
+                instruction = f'BPF_ALU32_IMM(BPF_ADD, BPF_REG_{target_reg}, {input_value})'
             elif keyword == "addI8":
-                instruction = f'BPF_ALU64_IMM(BPF_ADD, BPF_REG_{target_reg}, {value})'
+                instruction = f'BPF_ALU64_IMM(BPF_ADD, BPF_REG_{target_reg}, {input_value})'
             elif keyword == "addR":
-                instruction = f'BPF_ALU64_REG(BPF_ADD, BPF_REG_{target_reg}, BPF_REG_{value})'
+                instruction = f'BPF_ALU64_REG(BPF_ADD, BPF_REG_{target_reg}, BPF_REG_{input_value})'
             
         # Mov Instructions
             elif keyword == "movI4" or keyword == "movI8":
-                instruction = f'BPF_MOV64_IMM(BPF_REG_{target_reg}, {value})'
+                instruction = f'BPF_MOV64_IMM(BPF_REG_{target_reg}, {input_value})'
             elif keyword == "movR":
-                instruction = f'BPF_MOV64_REG(BPF_REG_{target_reg}, BPF_REG_{value})'
+                instruction = f'BPF_MOV64_REG(BPF_REG_{target_reg}, BPF_REG_{input_value})'
 
         # Exit command located
             elif keyword == "exit":
@@ -218,9 +215,9 @@ def translate_to_bpf_in_c(program_list):
         elif len(split_ins) == 4:
             offset = int(split_ins[3])
             if keyword == "jneI4" or keyword == "jneI8":
-                instruction = f'BPF_JMP_IMM(BPF_JNE, BPF_REG_{target_reg}, {value}, {offset})'
+                instruction = f'BPF_JMP_IMM(BPF_JNE, BPF_REG_{target_reg}, {input_value}, {offset})'
             elif keyword == "jneR":
-                instruction = f'BPF_JMP_REG(BPF_JNE, BPF_REG_{target_reg}, BPF_REG_{value}, {offset})'
+                instruction = f'BPF_JMP_REG(BPF_JNE, BPF_REG_{target_reg}, BPF_REG_{input_value}, {offset})'
         
         # Formatting a single output string for direct copy into bpf_step
         output += instruction + ", "

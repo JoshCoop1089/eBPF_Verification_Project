@@ -30,12 +30,12 @@ class tnum:
         self.range = r
 
     def lshift(self, i):
-        self.min <<= i
-        self.range <<= i
+        LShL(self.mini, i)
+        LShL(self.range, i)
 
     def rshift(self, i):
-        self.min >>= i
-        self.range >>= i
+        LShR(self.min, i)
+        LShR(self.range, i)
 
     def is_const(self):
         return self.range == 0
@@ -48,36 +48,88 @@ class tnum:
 
     def add(self, other):
         """
-        Add is nontrivial.
+        verifier does the following:
+            sv = sum of values/mins
+            sm = sum of masks/ranges
 
-        The new minimum is clearly just old minimum + old minimum.
+            sigma (maximal result) = sm + sv
+            chi (all carry bits) = bitwise XOR of sigma and sv
+            mu (all unknown bits) = bitwise OR of chi and both original masks/ranges
+                -> propogates all unknown bits of original masks
+                   also accounts for newly generated unknown bits
 
-        Figuring out the new range is difficult though. You can't just
-        add the two previous ranges; as an example, let's say we're adding
-        the following two numbers:
-
-          01_0 -> 0100, 0010 = 4 or 6
-        + 00_1 -> 0001, 0010 = 1 or 3
-        ------
-          ????
-
-        The new number could be 5, 7, or 9. Adding the mins get you to
-        5. Adding the ranges gets you 4. So you just add them and done, right?
-        Wrong. Adding them gets you 0101 and 0100. This is not a valid representation
-        of our number.
-        
-
+            final value/min: bitwise AND of sv and mu
+            final mask/range: mu
         """
-        ret = tnum(self.min + other.min, self.range + other.range)
-        return ret
+        sm = self.range + other.range
+        sv = self.min + other.min
 
+        sigma = self.range + self.min + other.range + other.min
+        chi = sigma ^ sv
+        mu = chi | self.range | other.range
+        
+        return tnum(sv & (~mu), mu)
+
+    def sub(self, other):
+        dv = self.min - other.min;
+        
+        alpha = dv + self.range
+        beta = dv - other.range
+        chi = alpha ^ beta
+        mu = chi | self.range | other.range
+
+        return tnum(dv & (~mu), mu)
+
+    def mult(self, other):
+        pi = self.min * other.min
+        acc = hma(tnum(pi, 0), self.range, other.range | other.min)
+        return hma(acc, other.range, self.min)
+
+    def tnum_and(self, other):
+        alpha = self.min | self.range
+        beta = other.min | other.range
+        v = self.min & other.min
+        return tnum(v, alpha & beta & ~v)
+
+    def tnum_or(self, other):
+        v = self.min | other.min
+        mu = self.range | other.range
+        return tnum(v, mu & ~v)
+
+    def tnum_xor(self, other):
+        v = self.min ^ other.min
+        mu = self.range | other.range
+        return tnum(v & ~mu, mu)
+
+    def interect(self, other):
+        v = self.min | other.min
+        mu = self.range & other.range
+        return tnum(v & ~mu, mu)
+
+    def tnum_in(self, other):
+        if (other.range & ~self.range):
+            return false
+        other.min &= ~self.range
+        return self.min == other.min
+
+    
+
+#half-multiply, apparently a static intermediate step to multiply
+def hma(acc, value, mask):
+    while (mask):
+        if (mask & 1):
+            acc = tnum_add(acc, tnum(0, value))
+        mask >>= 1
+        value <<= 1
+    return acc
     
 
 a = 12
-t1 = tnum(BitVecVal(5, 4), BitVecVal(0, 1))
-t2 = tnum(BitVecVal(7, 4), BitVecVal(0, 1))
-t3 = tnum(BitVec('min', 4), BitVec('range', 1))
+t1 = tnum(BitVecVal(10, 64), BitVecVal(0, 64))
+t2 = tnum(BitVecVal(6, 64), BitVecVal(0, 64))
+t3 = tnum(BitVec('min', 64), BitVec('range', 64))
 
 solve(t3.eq_tnum(t1.add(t2)))
-    
+solve(t3.eq_tnum(t1.sub(t2)))
+solve(t3.eq_tnum(t1.tnum_and(t2)))
     

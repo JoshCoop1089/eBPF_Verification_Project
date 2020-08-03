@@ -66,3 +66,13 @@ Range analysis:
 7/30:
  - Model all tnum operations from tnum.c 
  - Use Z3 bitvectors (?)
+
+8/3:
+ - Encode all operations for real this time
+ - Mimic c code
+ - Attempt to check with SAT solver - given tnum_1, tnum_2, tnum_3, and operation o(), such that o(tnum_1, tnum_2) = tnum_3 does there exist:
+  > a in tnum_1
+  > b in tnum_2
+  > c = o(a,b)
+
+  such that c is not in tnum_3

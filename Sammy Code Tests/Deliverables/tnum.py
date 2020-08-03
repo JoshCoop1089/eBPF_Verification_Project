@@ -29,6 +29,9 @@ class tnum:
         self.min = m
         self.range = r
 
+    def __str__(self):
+        return "<min: " + str(self.min) + ", range: " + str(self.range) + ">"
+
     def lshift(self, i):
         LShL(self.mini, i)
         LShL(self.range, i)
@@ -80,6 +83,7 @@ class tnum:
 
         return tnum(dv & (~mu), mu)
 
+    #currently not working - see hma method
     def mult(self, other):
         pi = self.min * other.min
         acc = hma(tnum(pi, 0), self.range, other.range | other.min)
@@ -107,29 +111,62 @@ class tnum:
         return tnum(v & ~mu, mu)
 
     def tnum_in(self, other):
-        if (other.range & ~self.range):
-            return false
+        if (other.range & ~self.range) is not 0:
+            return False
         other.min &= ~self.range
         return self.min == other.min
 
     
 
-#half-multiply, apparently a static intermediate step to multiply
+#current error - will infinitely rightshift because the bitvecs check for satisfiability rather than concrete values
+"""
+half-multiply, apparently a static intermediate step to multiply
+"""
 def hma(acc, value, mask):
-    while (mask):
-        if (mask & 1):
-            acc = tnum_add(acc, tnum(0, value))
+    loops = 0
+    while mask != 0:
+        if (mask & 1) is not 0:
+            acc = acc.add(tnum(0, value))
         mask >>= 1
         value <<= 1
     return acc
     
-
-a = 12
-t1 = tnum(BitVecVal(10, 64), BitVecVal(0, 64))
-t2 = tnum(BitVecVal(6, 64), BitVecVal(0, 64))
+"""
+t1 = tnum(BitVecVal(2, 64), BitVecVal(1, 64))
+t2 = tnum(BitVecVal(2, 64), BitVecVal(0, 64))
 t3 = tnum(BitVec('min', 64), BitVec('range', 64))
 
 solve(t3.eq_tnum(t1.add(t2)))
 solve(t3.eq_tnum(t1.sub(t2)))
-solve(t3.eq_tnum(t1.tnum_and(t2)))
+"""
+
+#Alright, the cool test
+n1 = tnum(BitVec('n1', 8), BitVecVal(0, 8))
+n2 = tnum(BitVec('n2', 8), BitVecVal(0, 8))
+n3 = tnum(BitVec('n3', 8), BitVecVal(0, 8))
+
+t1 = tnum(BitVec('tn1_value', 8), BitVec('tn1_mask', 8))
+t2 = tnum(BitVec('tn2_value', 8), BitVec('tn2_mask', 8))
+t3 = tnum(BitVec('tn3_value', 8), BitVec('tn3_mask', 8))
+
+solver = Solver()
+
+solver.add(n3.eq_tnum(n1.add(n2)))
+
+while solver.check() == sat:
+  m = solver.model()
+  print (m)
+
+    
+"""          
+s.add(t1.tnum_in(n1))
+s.add(t2.tnum_in(n2))
+s.add(Not(t3.tnum_in(n3))
+
+s.add(t3.tnum_eq(t1.add(t2)))
+"""
+
+#test = tnum(BitVec('val', 64), BitVecVal(0, 64))
+#print(t1.tnum_in(t2))
+#solve(t3.eq_tnum(t1.mult(t2)))
     

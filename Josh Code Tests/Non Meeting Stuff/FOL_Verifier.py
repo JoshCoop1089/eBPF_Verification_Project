@@ -229,10 +229,7 @@ def get_the_locations_and_extend(input_value, target_reg, register_state_helper,
             r_s_h.problem_flag = r_s_h.instruction_number * -1
         
         else:
-            if extension_length != 0:
-                list_of_locations[0] = extend_the_number(input_value, extension_length, r_s_h)
-            else:
-                list_of_locations[0] = BitVecVal(input_value, r_s_h.reg_bit_width)
+            list_of_locations[0] = extend_the_number(input_value, extension_length, r_s_h)
                 
     return list_of_locations, r_s_h
 

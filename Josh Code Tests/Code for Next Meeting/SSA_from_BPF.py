@@ -5,18 +5,8 @@ Created on Sat Aug  8 20:38:59 2020
 @author: joshc
 """
 
-"""
-Thoughts on SSA and Control Flow
+from collections import defaultdict 
 
-Identify which nodes link
-Single pass through instruction list, id any jump offsets
-
-identify which register an instruction is changing
-
-if a node has two paths leading toward it, check if the register modified in that 
-specific instruction is also modified on the path from jump to node
-
-"""
 class Node_Info:
     def __init__ (self, instruction, number):
         self.full_instruction = instruction
@@ -39,38 +29,79 @@ class Node_Info:
     def can_be_reached_from(self, source):
         self.pred_nodes.append(source)
         
+
     def __str__(self):
         print(f'Node {self.node_number}')
         print(f'Instruction: {self.full_instruction}')
         print(f'Direct Pred Nodes: {self.pred_nodes}')
+        # print(f'Paths to Node: {len(self.paths_to_node)}')
+        # for path in self.paths_to_node:
+        #     print("New Path:")
+        #     for node in path:
+        #         print(node, end = " ")
+        #     print()    
+        print(f'Dominator Nodes: {self.dominated_by}')
         return ""
-        
-        
-"""
-Given a list of instructions, where the command is either a jump or non jump,
-    identify every immediate pred node for a specific instruction (node)
+   
+# This class represents a directed graph using adjacency list representation 
+# Modified geek4geek dfs code
+class Graph: 
+    def __init__(self): 
+        self.graph = defaultdict(list)  
+   
+    def addEdge(self, start, end): 
+        self.graph[start].append(end) 
     
-Instructions given in FOLVerifier.py format
-"""
-instruction_list = ["a 1 1", "b 1 2", "jmp 1 2 2", "c 2 1", "d 1 2", "e 2 2"]
-node_list = [Node_Info(instruction, number) for number, instruction in enumerate(instruction_list)]
-
-# Define what nodes can be reached from another node
-for node_number, node in enumerate(node_list):
-    if node_number == 0:
-        node.can_be_reached_from(0)
-    elif node_number == len(node_list) - 1:
-        break
-
-    node_list[node_number+1].can_be_reached_from(node_number)
-    if node.offset != 0:
-        node_list[node_number+node.offset+1].can_be_reached_from(node_number)
+    # Modified Backtracking algo, code from https://www.python.org/doc/essays/graphs/
+    def find_all_paths(self, start, end, path=[]):
+        path = path + [start]
+        if start == end:
+            return [path]
         
-for node in node_list:
-    print(node)     
+        paths = []
+        for node in self.graph[start]:
+            if node not in path:
+                newpaths = self.find_all_paths(node, end, path)
+                for newpath in newpaths:
+                    paths.append(newpath)
+        return paths        
+        
+# Define what nodes can be reached from another node
+def find_all_edges(node_list):
+    for node_number, node in enumerate(node_list):
+        if node_number == len(node_list) - 1:
+            break
+    
+        node_list[node_number+1].can_be_reached_from(node_number)
+        if node.offset != 0:
+            node_list[node_number+node.offset+1].can_be_reached_from(node_number)
+    return node_list
 
-# Find out what paths lead to a specific node
-# Identify if a node is in every path for another node to show dominance
+instruction_list = ["a 1 1", "b 1 2", "jmp 1 2 2", "c 2 1", "jmp 1 1 2", "d 1 2", "e 2 2", "f 2 2"]
+node_list = [Node_Info(instruction, number) for number, instruction in enumerate(instruction_list)]
+node_list = find_all_edges(node_list)
+
+# Set up the graph, and add all the edges
+g = Graph()
+for node in node_list:
+    for pred_node in node.pred_nodes:
+        print(f'Adding edge from s: {pred_node} to d: {node.node_number}')
+        g.addEdge(pred_node, node.node_number)
+print()
+        
+# Find out what paths lead to a specific node from the initial node
+for d, node in enumerate(node_list):
+    node.paths_to_node = g.find_all_paths(0, d)
+
+# Take the intersection of all possible paths, the result will be all nodes
+    # which dominate a chosen node
+for node in node_list:
+    sets_from_paths = []
+    for path in node.paths_to_node:
+        sets_from_paths.append(set(path))
+    node.dominated_by = set.intersection(*sets_from_paths)
+    print(node)    
+
 # Find the dominance frontier of each node
 # Do the whole Phi Function Algo
 

@@ -164,8 +164,9 @@ def phi_function_locations(node_list):
                 
         ever_on_work_list = work_list
         while len(work_list) != 0:
-            node_to_add_phi_func_to = work_list.pop()
-            for dom_front_node in node_list[node_to_add_phi_func_to].dominance_frontier_nodes:
+            check_dom_front_of = work_list.pop()
+            print(f'Checking node {check_dom_front_of}')
+            for dom_front_node in node_list[check_dom_front_of].dominance_frontier_nodes:
                 
                 # Insert at most 1 phi function per node
                 if "jmp" not in node_list[dom_front_node].keyword and dom_front_node not in already_has_phi_func:

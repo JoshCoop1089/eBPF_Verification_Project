@@ -4,7 +4,7 @@ Created on Sat Aug  8 20:38:59 2020
 
 @author: joshc
 """
-
+import time
 from collections import defaultdict 
 
 class Node_Info:
@@ -12,9 +12,10 @@ class Node_Info:
         self.full_instruction = instruction
         self.node_number = number
         self.pred_nodes = []
+        self.pred_set = set()
         self.paths_to_node = []
-        self.dominated_by = []
-        self.dominance_frontier_nodes = []
+        self.dominated_by = set()
+        self.dominance_frontier_nodes = set()
         
         # Getting the specifics from an instruction
         split_ins = instruction.split(" ")        
@@ -29,11 +30,11 @@ class Node_Info:
     def can_be_reached_from(self, source):
         self.pred_nodes.append(source)
         
-
     def __str__(self):
         print(f'Node {self.node_number}')
         print(f'Instruction: {self.full_instruction}')
         print(f'Direct Pred Nodes: {self.pred_nodes}')
+        print(f'Pred node Set: {self.pred_set}')
         # print(f'Paths to Node: {len(self.paths_to_node)}')
         # for path in self.paths_to_node:
         #     print("New Path:")
@@ -41,6 +42,7 @@ class Node_Info:
         #         print(node, end = " ")
         #     print()    
         print(f'Dominator Nodes: {self.dominated_by}')
+        print(f'Dominance Frontier: {self.dominance_frontier_nodes}')
         return ""
    
 # This class represents a directed graph using adjacency list representation 
@@ -52,7 +54,15 @@ class Graph:
     def addEdge(self, start, end): 
         self.graph[start].append(end) 
     
-    # Modified Backtracking algo, code from https://www.python.org/doc/essays/graphs/
+    """Modified Backtracking algo, code from https://www.python.org/doc/essays/graphs/
+    
+    This code blows up if tracing more than 64 instructions.  Figure out a better 
+        way to find sub paths.  Either use tail recursion, or some type of 
+        memoization of past paths.
+    
+    Depending on how monday meeting goes, will optimize more in future, tonight's focus
+        is still on getting the phi function placement to work'
+    """
     def find_all_paths(self, start, end, path=[]):
         path = path + [start]
         if start == end:
@@ -77,31 +87,74 @@ def find_all_edges(node_list):
             node_list[node_number+node.offset+1].can_be_reached_from(node_number)
     return node_list
 
-instruction_list = ["a 1 1", "b 1 2", "jmp 1 2 2", "c 2 1", "jmp 1 1 2", "d 1 2", "e 2 2", "f 2 2"]
-node_list = [Node_Info(instruction, number) for number, instruction in enumerate(instruction_list)]
-node_list = find_all_edges(node_list)
 
-# Set up the graph, and add all the edges
-g = Graph()
-for node in node_list:
-    for pred_node in node.pred_nodes:
-        print(f'Adding edge from s: {pred_node} to d: {node.node_number}')
-        g.addEdge(pred_node, node.node_number)
-print()
-        
-# Find out what paths lead to a specific node from the initial node
-for d, node in enumerate(node_list):
-    node.paths_to_node = g.find_all_paths(0, d)
-
-# Take the intersection of all possible paths, the result will be all nodes
-    # which dominate a chosen node
-for node in node_list:
-    sets_from_paths = []
-    for path in node.paths_to_node:
-        sets_from_paths.append(set(path))
-    node.dominated_by = set.intersection(*sets_from_paths)
-    print(node)    
+def establish_dominators(node_list): 
+    g = Graph()
+    for node in node_list:
+        for pred_node in node.pred_nodes:
+            # print(f'Adding edge from s: {pred_node} to d: {node.node_number}')
+            g.addEdge(pred_node, node.node_number)
+    # print()
+            
+    # Find out what paths lead to a specific node from the initial node
+    for d, node in enumerate(node_list):
+        node.paths_to_node = g.find_all_paths(0, d)
+    
+    # Using all possible paths, get the set of dominator nodes and predecessor nodes
+    for node in node_list:
+        sets_from_paths = []
+        for path in node.paths_to_node:
+            sets_from_paths.append(set(path))
+        node.dominated_by = set.intersection(*sets_from_paths)
+        node.pred_set = set.union(*sets_from_paths)
+        node.pred_set.remove(node.node_number)
+    
+    return node_list
 
 # Find the dominance frontier of each node
+def node1_sdom_node2_check(node1, node2):
+    """
+    Checking if node1 sdom node2 for use in Dominance Frontier selection
+    
+    ie, return True if node1 is in the dominator set of node 2, and node1 == node 2
+    """
+    return (node1.node_number in node2.dominated_by) and (node1.node_number != node2.node_number)
+    
+    
+    
+def find_dominance_frontier(node_list):
+    """
+    Dominance Frontier Algorithm:
+        DF(node D) = {N | There exists a node Pred, which is a predecessor of node N such that
+                 node D dominates node Pred, and node d doesn't strictly dominate node N'}
+        
+        The predecessor nodes of node N would be any node on a path that leads to N
+        So after establishing path, we should also take the union of the paths to be searched
+        
+    """
+    for checking_node in node_list:
+
+        for possible_DF_node in node_list:
+            
+            if not node1_sdom_node2_check(checking_node, possible_DF_node):
+                # Check the prednode set for any node that is dominated by checking_node
+                for node in possible_DF_node.pred_set:
+                    if checking_node.node_number in node_list[node].dominated_by:
+                        checking_node.dominance_frontier_nodes.add(possible_DF_node.node_number)
+    return node_list
+
 # Do the whole Phi Function Algo
 
+start_time = time.time()
+instruction_list = ["a 1 1", "b 1 2", "jmp 1 2 2", "c 2 1", "jmp 1 1 2", "d 1 2", "e 2 2", "f 2 2"]
+# for _ in range(4):
+#     instruction_list.extend(instruction_list)
+# print(len(instruction_list))
+node_list = [Node_Info(instruction, number) for number, instruction in enumerate(instruction_list)]
+node_list = find_all_edges(node_list)
+node_list = establish_dominators(node_list)
+node_list = find_dominance_frontier(node_list)
+for node in node_list:
+    print(node)
+end_time = time.time()
+print('\n-->  Elapsed Time: %0.3f seconds  <--' %(end_time-start_time))

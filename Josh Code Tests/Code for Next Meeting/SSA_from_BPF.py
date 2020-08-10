@@ -16,7 +16,7 @@ class Node_Info:
         self.paths_to_node = []
         self.dominated_by = set()
         self.dominance_frontier_nodes = set()
-        self.phi_func = ""
+        self.phi_func = []
         
         # Getting the specifics from an instruction
         split_ins = instruction.split(" ")        
@@ -151,6 +151,12 @@ def find_dominance_frontier(node_list):
 def phi_function_locations(node_list):
     """
     From slide 26 in lecture7.ppt in Code for Next Meeting
+    
+    Note: Can a node have a phi function for different variables? 
+        ie, can it need a phi func for register 1 and register 2?  I think this 
+        should be valid, because since I haven't made any choice about phi func
+        usage based on inputs, we need to know about every possible change to any 
+        variable across the whole program!
     """
     for register_number in range(10):
         work_list = set()
@@ -165,12 +171,11 @@ def phi_function_locations(node_list):
         ever_on_work_list = work_list
         while len(work_list) != 0:
             check_dom_front_of = work_list.pop()
-            print(f'Checking node {check_dom_front_of}')
             for dom_front_node in node_list[check_dom_front_of].dominance_frontier_nodes:
                 
                 # Insert at most 1 phi function per node
                 if "jmp" not in node_list[dom_front_node].keyword and dom_front_node not in already_has_phi_func:
-                    node_list[dom_front_node].phi_func = f'Need a phi func for register {register_number}'
+                    node_list[dom_front_node].phi_func.append(f'Need a phi func for register {register_number}')
                     already_has_phi_func.add(dom_front_node)
                     
                     # Process each node at most once

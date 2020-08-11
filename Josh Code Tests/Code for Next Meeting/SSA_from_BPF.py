@@ -188,7 +188,7 @@ def phi_function_locations(node_list):
                         
 start_time = time.time()
 instruction_list = ["a 1 1", "b 1 2", "jmp 1 2 2", "c 2 1", "jmp 1 1 2", "d 1 1", "e 2 2", "f 2 2"]
-# for _ in range(4):
+# for _ in range(3):
 #     instruction_list.extend(instruction_list)
 # print(len(instruction_list))
 node_list = [Node_Info(instruction, number) for number, instruction in enumerate(instruction_list)]

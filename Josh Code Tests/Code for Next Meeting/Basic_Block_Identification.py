@@ -23,7 +23,9 @@ Assumptions about instruction links:
 """
 import time
 import networkx as nx
-import matplotlib.pyplot as plt
+
+# Unsure if nx.draw(graph) actually requires this
+# import matplotlib.pyplot as plt
 
 class Instruction_Info:
     def __init__ (self, instruction, number):
@@ -43,8 +45,7 @@ class Instruction_Info:
             self.offset = 0
 
     def __str__(self):
-        print(f'Instruction {self.instruction_number}')
-        print(f'Instruction: {self.full_instruction}')
+        print(f'Instruction {self.instruction_number}: {self.full_instruction}')
         print(f'Source: {self.input_value}\tTarget: {self.target_reg}')
         return ""  
     
@@ -55,8 +56,14 @@ class Basic_Block:
         self.block_instructions = []
         for instruction_number in instruction_chunk:
             self.block_instructions.append(instruction_list[instruction_number])
+            
+        # Identifying what registers need new SSA names in a block
+        self.variables_changed_in_block = set()
+        for instruction in self.block_instructions:
+            if "jmp" not in instruction.keyword:
+                self.variables_changed_in_block.add(instruction.target_reg)
         
-        # The head of this block can be referenced in linking to other blocks
+        # All of the following might be overcomplicating block linkage
         self.initial_instruction = instruction_chunk[0]
         self.final_instruction = instruction_chunk[-1]
         self.input_links = []
@@ -71,15 +78,16 @@ class Basic_Block:
             self.output_links.append(end_of_edge)
             
     def __str__(self):
-        print('Instructions in Block:')
+        print(self.name)
         for instruction in self.block_instructions:
             print(instruction)
         print(f'Block Forward Links to Instructions: {self.output_links}')
         print(f'Block Backward Links to Instructions: {self.input_links}')
+        print(f'Block Makes Changes to the following registers: {self.variables_changed_in_block}')
         return ""
             
 # Define what instructions can be reached from another instruction
-     # This is a precursor function for basic block identification
+     # This is a precursor function for basic block identification/linking
 def extract_all_edges_from_instruction_list(instruction_list, graph):
     for instruction_number, instruction in enumerate(instruction_list):
         if instruction_number == len(instruction_list) - 1:
@@ -93,13 +101,13 @@ def extract_all_edges_from_instruction_list(instruction_list, graph):
 def identify_leaders(instruction_list):
     leader_set = set()    
     for instruction_number, instruction in enumerate(instruction_list):
-        # Rule 1 - First Instruction is a leader
-        if instruction_number == 0:
-            leader_set.add(instruction_number)
-        
         # IndexOutOfBound protection, last node can still be found as a possible leader below
-        elif instruction_number == len(instruction_list) - 1:
+        if instruction_number == len(instruction_list) - 1:
             break
+        
+        # Rule 1 - First Instruction is a leader
+        elif instruction_number == 0:
+            leader_set.add(instruction_number)
         
         else:
             if "jmp" in instruction.keyword:
@@ -115,21 +123,26 @@ def identify_the_instructions_in_basic_blocks(instruction_list):
     leader_list = sorted(list(identify_leaders(instruction_list)))
     block_list = []
     while len(block_list) < len(leader_list):
-        instruction_start_index = len(block_list)
-        instruction_end_index = instruction_start_index + 1
+        index_of_current_leader = len(block_list)
+        index_of_next_leader = index_of_current_leader + 1
         
-        # Get all the instruction numbers between two subsequent leader instruction numbers
+        # Get all the instruction numbers between two subsequent leader instructions
+        # Example: If leader_list was [0,3,5] and there were 7 total instructions
+            # First basic block would return [0,1,2]
+            # Second block would be [3,4]
+            # Final Block would be [5,6]
         try:
-            basic_block = [i for i in range(leader_list[instruction_start_index],
-                                            leader_list[instruction_end_index])]
+            basic_block = [i for i in range(leader_list[index_of_current_leader],
+                                            leader_list[index_of_next_leader])]
         except IndexError:
-            basic_block = [i for i in range(leader_list[instruction_start_index],
+            basic_block = [i for i in range(leader_list[index_of_current_leader],
                                             len(instruction_list))]
         block_list.append(basic_block)
         
     return block_list
 
 # Finding out how to link Basic_Block objects together
+# Does this need to be changed?  I am less than enamored with the next_blocks identification method
 def get_edges_between_basic_blocks(block_list):
     block_graph = nx.DiGraph()
     for starting_block in block_list:
@@ -140,10 +153,32 @@ def get_edges_between_basic_blocks(block_list):
                 block_graph.add_edge(starting_block, next_block)
     return block_graph    
 
+def set_up_basic_block_cfg(instruction_list):
+    instruction_graph = nx.DiGraph()
+    instruction_list = [Instruction_Info(instruction, number) for number, instruction in enumerate(instruction_list)]
+    instruction_graph = extract_all_edges_from_instruction_list(instruction_list, instruction_graph)
+    # nx.draw(instruction_graph)
+    
+    block_list_chunks = identify_the_instructions_in_basic_blocks(instruction_list)
+    block_list = []
+    for block_chunk in block_list_chunks:     
+        block_list.append(Basic_Block(block_chunk, instruction_list, instruction_graph))
+    
+    for block in block_list:
+        print("-"*20)
+        print(block)
+
+    block_graph = get_edges_between_basic_blocks(block_list)
+    print("-"*20)
+    print("\n".join([f'{block.name} links forward to {end.name}' for (block, end) in block_graph.edges()]))
+
+    # nx.draw(block_graph)
+
+    return block_graph
+    
 
 # Driver code for testing
 start_time = time.time()
-instruction_graph = nx.DiGraph()
 instruction_list = ["a 1 1", "b 1 2", "jmp 1 2 2", "c 2 1", "jmp 1 1 2", "d 1 1", "e 2 2", "f 2 2", "g 1 2"]
 
 # Extending the code to arbitrary lengths for stress testing
@@ -151,20 +186,10 @@ instruction_list = ["a 1 1", "b 1 2", "jmp 1 2 2", "c 2 1", "jmp 1 1 2", "d 1 1"
 #     instruction_list.extend(instruction_list)
 # print(len(instruction_list))
 
-instruction_list = [Instruction_Info(instruction, number) for number, instruction in enumerate(instruction_list)]
-instruction_graph = extract_all_edges_from_instruction_list(instruction_list, instruction_graph)
-# nx.draw(instruction_graph)
+block_graph = set_up_basic_block_cfg(instruction_list)
 
-block_list_chunks = identify_the_instructions_in_basic_blocks(instruction_list)
-block_list = []
-for block_chunk in block_list_chunks:     
-    block_list.append(Basic_Block(block_chunk, instruction_list, instruction_graph))
-
-block_graph = get_edges_between_basic_blocks(block_list)
 start_block = [block_node for (block_node, indegree) in block_graph.in_degree() if indegree == 0]
 dom_dict = nx.dominance_frontiers(block_graph, start_block[0])
-nx.draw(block_graph)
-print("\n".join([f'{block.name} links forward to {end.name}' for (block, end) in block_graph.edges()]))
  
 end_time = time.time()
 print('\n-->  Elapsed Time: %0.3f seconds  <--' %(end_time-start_time))

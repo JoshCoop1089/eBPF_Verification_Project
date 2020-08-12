@@ -21,20 +21,26 @@ Assumptions about instruction links:
         1) Directly forward (all instructions link to the next one)
         2) Jump offset to a future instruction (found in the Instruction_Info.offset value)
 """
-import time
+import time, copy
 import networkx as nx
+from z3 import *
 
 # Unsure if nx.draw(graph) actually requires this
 # import matplotlib.pyplot as plt
 
+# Internal representation for one instance of a register
+class Register_BitVec:
+    def __init__(self, name, reg_bit_size):
+        self.name = BitVec(name, reg_bit_size)
+        self.reg_name = name 
+
+# All the info for parsing a single instruction from a program
 class Instruction_Info:
     def __init__ (self, instruction, number):
         self.full_instruction = instruction
         self.instruction_number = number
         
         # Getting the specifics from an instruction
-        # Will eventually be used in the eBPF instructions, but for now,
-            # only offset is important for linking instructions together
         split_ins = instruction.split(" ")        
         self.keyword = split_ins[0]
         self.input_value = int(split_ins[1])
@@ -43,16 +49,38 @@ class Instruction_Info:
             self.offset = int(split_ins[3])
         else:
             self.offset = 0
+        
+        # Defining how to treat self.input_value
+        if "I4" in self.keyword:
+            self.input_value_type = "Half-sized External Value"
+        elif "I8" in self.keyword:
+            self.input_value_type = "Register-sized External Value"     
+        elif "Reg" in self.keyword:
+            self.input_value_type = "Value from Register"     
+        else:
+            self.input_value_type = "ya broked it"
+            
+        # Store the name in the instruction, reference the actual bitVec object from an external dictionary
+        if "jmp" not in self.keyword:
+            self.target_reg_name = f'r{self.target_reg}_{self.instruction_number}'
+        else:
+            self.target_reg_name = ""
 
     def __str__(self):
         print(f'Instruction {self.instruction_number}: {self.full_instruction}')
-        print(f'Source: {self.input_value}\tTarget: {self.target_reg}')
+        # print(f'Source: {self.input_value}\tTarget: {self.target_reg}')
+        # print(f'Source Type: {self.input_value_type}\t ')
         return ""  
     
 # Basic Block holds all Instruction_Info commands for reference in a specific chunk of straightline code
 class Basic_Block:
-    def __init__ (self, instruction_chunk, instruction_list, graph):
-        self.name = "Instructions in Block: " + str(instruction_chunk).strip("[]")
+    def __init__ (self, num_regs, instruction_chunk, instruction_list, graph):
+        self.name = str(instruction_chunk).strip("[]")
+        self.num_regs = num_regs
+        
+        # For use in naming any phi functions the block requires
+        self.block_ID = str(instruction_chunk[0])
+        
         self.block_instructions = []
         for instruction_number in instruction_chunk:
             self.block_instructions.append(instruction_list[instruction_number])
@@ -63,10 +91,22 @@ class Basic_Block:
             if "jmp" not in instruction.keyword:
                 self.variables_changed_in_block.add(instruction.target_reg)
                 
-        # Phi Functions for changes in registers
+        # Holds the numbers of any registers which would require a phi function at the beginning of the block
         self.phi_functions = []
         
-        # All of the following might be overcomplicating block linkage
+        # Since Phi functions aren't known at block creation time, will be updated 
+            # with any names after phi_function_locations has been run on the CFG
+        self.phi_function_named_registers = []
+        
+        # Gets the most up to date names of registers from the last block
+            # If a phi function is required for a variable in the block, 
+            # will put r{reg_number}_{block_ID}_phi instead of r{reg_number}_{instruction_number}
+        self.register_names_before_block_executes = ['0' for _ in range(self.num_regs)]
+        
+        # Stores all reg names after execution of the block to pass onto the next block in the CFG
+        self.register_names_after_block_executes = ['0' for _ in range(self.num_regs)]
+        
+        # All of the following relates to block linkage in the CFG representation
         self.initial_instruction = instruction_chunk[0]
         self.final_instruction = instruction_chunk[-1]
         self.input_links = []
@@ -80,14 +120,45 @@ class Basic_Block:
         for (start_of_edge, end_of_edge) in graph.edges([self.block_instructions[-1].instruction_number]):
             self.output_links.append(end_of_edge)
             
+    def create_phi_function_register_names(self):
+        for register_number in self.phi_functions:
+            reg_name = f'r{register_number}_Block_{self.block_ID}_phi'
+            self.phi_function_named_registers.append(reg_name)
+            
+    def get_reg_names_for_beginning_of_block(self, block_graph):
+        if self.block_ID == '0':
+            self.register_names_before_block_executes = \
+                [f'r{i}_start' for i in range(self.num_regs)]
+        else:
+            previous_blocks =[block for block in block_graph.predecessors(self)]
+            self.register_names_before_block_executes = copy.deepcopy(previous_blocks[0].register_names_after_block_executes)
+    
+            # Block need a phi function definition
+            for reg_number in self.phi_functions:
+                reg_name = [name for name in self.phi_function_named_registers if f'r{reg_number}' in name]
+                self.register_names_before_block_executes[reg_number] = reg_name[0]
+    
+    def get_reg_names_for_end_of_block(self):
+        for instruction in self.block_instructions:
+            new_name = instruction.target_reg_name
+            if not new_name == "":
+                self.register_names_after_block_executes[instruction.target_reg] = new_name
+                
+        for reg_num, reg_name in enumerate(self.register_names_after_block_executes):
+            if reg_name == '0':
+                self.register_names_after_block_executes[reg_num] = \
+                    self.register_names_before_block_executes[reg_num]
+        
     def __str__(self):
-        print(self.name)
+        print(f'\nInstructions in Block: {self.name}' + '\n' + '*'*20)
         for instruction in self.block_instructions:
             print(instruction)
-        print(f'Block Forward Links to Instructions: {self.output_links}')
-        print(f'Block Backward Links to Instructions: {self.input_links}')
-        print(f'Block Makes Changes to the following registers: {self.variables_changed_in_block}')
-        print(f'Block needs a phi function for registers: {self.phi_functions}')
+        print(f'Block starts with regs named: {self.register_names_before_block_executes}')
+        print(f'Block ends with regs named: {self.register_names_after_block_executes}')
+        # print(f'Block Forward Links to Instructions: {self.output_links}')
+        # print(f'Block Backward Links to Instructions: {self.input_links}')
+        # print(f'Block Makes Changes to the following registers: {self.variables_changed_in_block}')
+        # print(f'Block needs a phi function for registers: {self.phi_functions}')
         return ""
             
 # Define what instructions can be reached from another instruction
@@ -103,7 +174,6 @@ def extract_all_edges_from_instruction_list(instruction_list):
     -------
     instruction_graph : TYPE : nx.DiGraph 
         Holds the node/edge connections from the instruction_list
-
     """
     instruction_graph = nx.DiGraph()
     for instruction_number, instruction in enumerate(instruction_list):
@@ -207,12 +277,12 @@ def get_edges_between_basic_blocks(block_list):
                 block_graph.add_edge(starting_block, next_block)
     return block_graph    
 
-def set_up_basic_block_cfg(instruction_list):
+def set_up_basic_block_cfg(instruction_list, reg_size, num_regs):
     """
     Parameters
     ----------
-    instruction_list : TYPE : List of Instruction_Info objects
-        Holds all instructions individually, no assumed connections
+    instruction_list : TYPE : List of strings
+        Holds all instructions individually, no assumed connections, in special keyword forms
 
     Returns
     -------
@@ -221,27 +291,31 @@ def set_up_basic_block_cfg(instruction_list):
         holding all required Instruction_Info objects
     """
     instruction_list = [Instruction_Info(instruction, number) for number, instruction in enumerate(instruction_list)]
+    
+    # Create all the regular register bitVec instances needed.  Does not create phi function registers yet
+    register_bitVec_dictionary = {}
+    for reg_num in range(num_regs):
+        reg_name = f'r{reg_num}_start'
+        register_bitVec_dictionary[reg_name] = Register_BitVec(reg_name, reg_size)
+
+    for instruction in instruction_list:
+        reg_name = instruction.target_reg_name
+        register_bitVec_dictionary[reg_name] = Register_BitVec(reg_name, reg_size)
+        
     instruction_graph = extract_all_edges_from_instruction_list(instruction_list)
     # nx.draw(instruction_graph)
     
     block_list_chunks = identify_the_instructions_in_basic_blocks(instruction_list)
     block_list = []
     for block_chunk in block_list_chunks:     
-        block_list.append(Basic_Block(block_chunk, instruction_list, instruction_graph))
-    
-    # for block in block_list:
-    #     print("-"*20)
-    #     print(block)
+        block_list.append(Basic_Block(num_regs, block_chunk, instruction_list, instruction_graph))
 
     block_graph = get_edges_between_basic_blocks(block_list)
-    # print("-"*20)
-    # print("\n".join([f'{block.name} links forward to {end.name}' for (block, end) in block_graph.edges()]))
-
     # nx.draw(block_graph)
 
-    return block_graph
+    return block_graph, register_bitVec_dictionary
     
-# Do the whole Phi Function Algo
+# Identify and place phi function for required register changes
 def phi_function_locations(block_graph):
     """
     From slide 26 in lecture7.ppt in Code for Next Meeting
@@ -261,11 +335,8 @@ def phi_function_locations(block_graph):
     """
     start_block = [block_node for (block_node, indegree) in block_graph.in_degree() if indegree == 0]
     dom_dict = nx.dominance_frontiers(block_graph, start_block[0])   
-    # for node in dom_dict.keys():
-    #     print(node.name)
-    #     print(f'Block: {node.name}  has a DF of {[df.name for df in dom_dict[node]]}')
 
-    for register_number in range(3):
+    for register_number in range(start_block[0].num_regs):
         work_list = set()
         ever_on_work_list = set()
         already_has_phi_func = set()
@@ -282,7 +353,7 @@ def phi_function_locations(block_graph):
                 
                 # Insert at most 1 phi function per node
                 if dom_front_node not in already_has_phi_func:
-                    dom_front_node.phi_functions.append(f'{register_number}')
+                    dom_front_node.phi_functions.append(register_number)
                     already_has_phi_func.add(dom_front_node)
                     
                     # Process each node at most once
@@ -292,21 +363,108 @@ def phi_function_locations(block_graph):
                         
     return block_graph
 
+# Startup function to create the CFG and set up the register names
+def basic_block_CFG_and_phi_function_setup(instruction_list, reg_size, num_regs):
+    """
+    Parameters
+    ----------
+    instruction_list : TYPE :List of strings
+        Holds all instructions individually, no assumed connections, in special keyword forms
+    reg_size : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    block_graph : TYPE : nx.DiGraph
+        Holds the node/edge connections from the block_list, where nodes are Basic_Block objects
+        holding all required Instruction_Info objects. Nodes have been updated with 
+        Phi functions for specific registers, and all registers which will be used in the program
+        have been created and assigned to their specific blocks ready to be combined with their
+        specific eBPF instructions
+    register_bitVec_dictionary : TYPE : Dictionary (Strings, Register_BitVec objects)
+        The reference list for the actual z3 bitVec variables that will be added to the solver
+    """
+    block_graph, register_bitVec_dictionary = set_up_basic_block_cfg(instruction_list, reg_size, num_regs)
+    block_graph = phi_function_locations(block_graph)
+    
+    # Create the phi function register bit vec objects for reference.  
+    # Regular registers are created in set_up_basic_block_cfg
+    for block in block_graph:
+        block.create_phi_function_register_names()
+        block.get_reg_names_for_beginning_of_block(block_graph)
+        block.get_reg_names_for_end_of_block()
+        for new_phi_reg in block.phi_function_named_registers:
+            register_bitVec_dictionary[new_phi_reg] = Register_BitVec(new_phi_reg, reg_size)
+    return block_graph, register_bitVec_dictionary   
+     
+"""
+To Do List
+-- Completed -- 
+Naming Scheme for registers 
+    Variable Names:
+        r1_{instruction_number}
+            Can be made during instruction_info object creation
+            Only required for the target_reg new instance
+            Maintain the names required for an instruction inside the instruction_info object for easy reference
+            Maintain the actual bitvec representations in an outside dictionary so you don't recopy them
+        r1_{block_ID}_phi
+
+    Make a new list at the beginning of every block holding the most recent names from the pred block(s)
+    If there are multiple pred blocks, then you would need to combine a specific
+        variable using a phi function (see 2 for specifics)
+    After all the instructions in the block have executed, make a new list for any name updates to be
+        sent to a subsequent block
+        
+-- In Progress -- 
+FOL Translations of eBPF
+Identifying Phi Function Conditions
+       
+Phi Function Conditions
+
+1) Find the immediate dominator (ImmDom) of the block in question (PhiN)
+2) for all the immediate predecessor blocks (predBlock) of PhiN
+    2a) Trace the shortest path from the ImmDom to a single predBlock
+    2b) Establish the series of true/false for all the jump conditions along the path
+        2b1) If len(shortest_path) is 0, the only condition is a false from ImmDom
+    2c) Take the conjunction of all conditions from 2b
+    2d) Take the conjunction of 2c with PhiN_register == predBlock_register
+3) PhiN phi function for a register will be the disjunction of all distinct conjunctions from 2d
+
+For the current 12 instruction long test program, we should get the following phi functions
+    
+phi(d_r) = (b = T ^ c = T ^ d_r = c_r) V (b = F ^ d_r = b_r)
+phi(f_r) = (d = T ^ f_r = e_r) V (d = F ^ f_r = d_r)
+phi(g_r) = (a = F ^ g_r = a_r) V (a = T ^ b = T ^ c = F ^ g_r = c_r) V (a = T ^ b = F ^ d = F ^ g_r = f_r)
+
+"""
+
+
+
 # Driver code for testing
 start_time = time.time()
+num_regs = 4
+reg_size = 8
+
+# 3 Pred Node at end
+# instruction_list = ["a 1 1", "jmp 1 1 9", "b 1 1",  "jmp 1 1 2", "c 1 1", "jmp 1 1 5", 
+#     "d 1 1", "jmp 1 1 1", "e 1 1", "f 1 1", "g 1 1", "h 1 1"]
+
+# Multiple variables need phi functions
 instruction_list = ["a 1 1", "b 1 2", "jmp 1 2 2", "c 2 1", "jmp 1 1 2", "d 1 1", "e 2 2", "f 2 2", "g 1 2"]
 
 # Extending the code to arbitrary lengths for stress testing
-# for _ in range(9):
-#     instruction_list.extend(instruction_list)
-# print(len(instruction_list))
+for _ in range(13):
+    instruction_list.extend(instruction_list)
+print(f'Number of Instructions: {len(instruction_list)}')
 
-block_graph = set_up_basic_block_cfg(instruction_list)
-block_graph = phi_function_locations(block_graph)
-for node in block_graph:
-    print("-"*20)
-    print(node)
-print("-"*20)
+block_graph, register_bitVec_dictionary = basic_block_CFG_and_phi_function_setup(instruction_list, reg_size, num_regs)    
+
+    
+# print([(key, register_bitVec_dictionary[key].name) for key in register_bitVec_dictionary.keys()])        
+# for node in block_graph:
+#     print("-"*20)
+#     print(node)
+# print("-"*20)
         
 end_time = time.time()
 print('\n-->  Elapsed Time: %0.3f seconds  <--' %(end_time-start_time))

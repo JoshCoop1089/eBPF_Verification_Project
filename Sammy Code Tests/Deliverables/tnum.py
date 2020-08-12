@@ -23,6 +23,9 @@ bit is set to 1 in the range.
 '''
 from z3 import *
 
+#throughout the project we will assume every bitvector is of this length
+bitLength = 8
+
 class tnum:
 
     def __init__(self, m, r):
@@ -99,7 +102,7 @@ class tnum:
 
         return tnum(dv & (~mu), mu)
 
-    #currently not working - see hma method
+    #If erroring, look at the hma subfunction first
     def mult(self, other):
         pi = self.min * other.min
         acc = hma(tnum(pi, 0), self.range, other.range | other.min)
@@ -160,35 +163,69 @@ class tnum:
 
     
 
-#current error - will infinitely rightshift because the bitvecs check for satisfiability rather than concrete values
+#current error - type mismatch stuff
 """
 half-multiply, apparently a static intermediate step to multiply
+
+Idea: While the mask is nonzero (it has at least one 1), check the rightmost bit. If it's a 1, then add the value to the accumulator.
+        Then, rightshift the mask (move one bit further in) and leftshift the value (you're working with the 2^n+1 bit, so multiply
+        your value by 2)
+
+original code:
+    while (mask) {
+        if (mask & 1)
+            acc = tnum_add(acc, TNUM(0, value));
+        mask >>= 1;
+        value <<= 1;
+    }
+    return acc;
+
+our code:
+    for 0 <= i <= bitlength - 1
+        determine the i'th bit
+        if i is 1, add 2^i (starts at 1) * value to the accumulator
 """
-def hma(acc, value, mask):
-    loops = 0
-    while mask != 0:
-        if (mask & 1) is not 0:
-            acc = acc.add(tnum(0, value))
-        mask >>= 1
-        value <<= 1
+def hma(base, value, mask):
+
+    acc = tnum(base.min, base.range)
+    
+    #go through every bit in the list
+    for bitnum in range(0, bitLength):
+        bit = z3.Extract(bitnum, bitnum, mask)
+
+        #multiply the value of toAdd by bit. 0 will result in 0 (add nothing), 1 will result in 1 (unchanged)
+        toAdd = tnum(0, BitVecVal(bit * pow(2, bitnum) * value, bitLength))
+        
+        acc = acc.add(toAdd)
+
     return acc
-
-#""""
-#Alright, the cool test
-n1 = tnum(BitVec('n1', 8), BitVecVal(0, 8))
-n2 = tnum(BitVec('n2', 8), BitVecVal(0, 8))
-n3 = tnum(BitVec('n3', 8), BitVecVal(0, 8))
-
-t1 = tnum(BitVec('tn1_value', 8), BitVec('tn1_mask', 8))
-t2 = tnum(BitVec('tn2_value', 8), BitVec('tn2_mask', 8))
-t3 = tnum(BitVec('tn3_value', 8), BitVec('tn3_mask', 8))
-
+    
+#             #
+#             #
+# Tests below #
+#             #
+#             #
 
 solver = Solver()
 
+n1 = tnum(BitVecVal(2, bitLength), BitVecVal(0, bitLength))
+n2 = tnum(BitVecVal(2, bitLength), BitVecVal(0, bitLength))
+n3 = tnum(BitVec("n3_value", bitLength), BitVec("n3_range", bitLength))
+
+solver.add(n3 == n1.mult(n2))
+
+""""
+#Alright, the cool test
+n1 = tnum(BitVec('n1', bitLength), BitVecVal(0, bitLength))
+n2 = tnum(BitVec('n2', bitLength), BitVecVal(0, bitLength))
+n3 = tnum(BitVec('n3', bitLength), BitVecVal(0, bitLength))
+
+t1 = tnum(BitVec('tn1_value', bitLength), BitVec('tn1_mask', bitLength))
+t2 = tnum(BitVec('tn2_value', bitLength), BitVec('tn2_mask', bitLength))
+t3 = tnum(BitVec('tn3_value', bitLength), BitVec('tn3_mask', bitLength))
+
 solver.add(n3.tnum_eq(n1.add(n2)))
 
-#"""
 solver.add(t1.tnum_in(n1))
 solver.add(t2.tnum_in(n2))
 solver.add((t3.tnum_in(n3)))
@@ -200,6 +237,11 @@ solver.add(t1.validate())
 solver.add(t2.validate())
 solver.add(t3.validate())
 
+test = BitVecVal(10, 4)
+temp = BitVec("result", 1)
+solve(temp == z3.Extract(2,2,test))
+#"""
+
 """
 n1 = 10000011 = 131
 n2 = 11111100 = 252
@@ -209,7 +251,7 @@ n3 = 01111111 = 127
 t1 = 10000011 | 01100000 = 132 | 96
 t2 = 11111100 | 00000000 = 252 | 0
 t3 = 00011111 | 11100000 =  31 | 224
-""
+"""
 
 
 if solver.check() == sat:

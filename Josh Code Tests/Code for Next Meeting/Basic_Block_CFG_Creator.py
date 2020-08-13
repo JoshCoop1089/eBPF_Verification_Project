@@ -440,31 +440,31 @@ phi(g_r) = (a = F ^ g_r = a_r) V (a = T ^ b = T ^ c = F ^ g_r = c_r) V (a = T ^ 
 
 
 
-# Driver code for testing
-start_time = time.time()
-num_regs = 4
-reg_size = 8
+# # Driver code for testing
+# start_time = time.time()
+# num_regs = 4
+# reg_size = 8
 
-# 3 Pred Node at end
+# # 3 Pred Node at end
 # instruction_list = ["a 1 1", "jmp 1 1 9", "b 1 1",  "jmp 1 1 2", "c 1 1", "jmp 1 1 5", 
 #     "d 1 1", "jmp 1 1 1", "e 1 1", "f 1 1", "g 1 1", "h 1 1"]
 
-# Multiple variables need phi functions
-instruction_list = ["a 1 1", "b 1 2", "jmp 1 2 2", "c 2 1", "jmp 1 1 2", "d 1 1", "e 2 2", "f 2 2", "g 1 2"]
+# # Multiple variables need phi functions
+# # instruction_list = ["a 1 1", "b 1 2", "jmp 1 2 2", "c 2 1", "jmp 1 1 2", "d 1 1", "e 2 2", "f 2 2", "g 1 2"]
 
-# Extending the code to arbitrary lengths for stress testing
-for _ in range(13):
-    instruction_list.extend(instruction_list)
-print(f'Number of Instructions: {len(instruction_list)}')
+# # Extending the code to arbitrary lengths for stress testing
+# # for _ in range(13):
+# #     instruction_list.extend(instruction_list)
+# print(f'Number of Instructions: {len(instruction_list)}')
 
-block_graph, register_bitVec_dictionary = basic_block_CFG_and_phi_function_setup(instruction_list, reg_size, num_regs)    
+# block_graph, register_bitVec_dictionary = basic_block_CFG_and_phi_function_setup(instruction_list, reg_size, num_regs)    
 
     
-# print([(key, register_bitVec_dictionary[key].name) for key in register_bitVec_dictionary.keys()])        
+# # print([(key, register_bitVec_dictionary[key].name) for key in register_bitVec_dictionary.keys()])        
 # for node in block_graph:
 #     print("-"*20)
 #     print(node)
 # print("-"*20)
         
-end_time = time.time()
-print('\n-->  Elapsed Time: %0.3f seconds  <--' %(end_time-start_time))
+# end_time = time.time()
+# print('\n-->  Elapsed Time: %0.3f seconds  <--' %(end_time-start_time))

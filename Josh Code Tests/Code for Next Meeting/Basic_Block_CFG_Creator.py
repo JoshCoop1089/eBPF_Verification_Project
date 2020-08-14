@@ -21,12 +21,9 @@ Assumptions about instruction links:
         1) Directly forward (all instructions link to the next one)
         2) Jump offset to a future instruction (found in the Instruction_Info.offset value)
 """
-import time, copy
+import copy
 import networkx as nx
 from z3 import *
-
-# Unsure if nx.draw(graph) actually requires this
-# import matplotlib.pyplot as plt
 
 # Internal representation for one instance of a register
 class Register_BitVec:
@@ -36,7 +33,7 @@ class Register_BitVec:
 
 # All the info for parsing a single instruction from a program
 class Instruction_Info:
-    def __init__ (self, instruction, number):
+    def __init__ (self, instruction, number, reg_bit_size):
         self.full_instruction = instruction
         self.instruction_number = number
         
@@ -51,26 +48,39 @@ class Instruction_Info:
             self.offset = 0
         
         # Defining how to treat self.input_value
-        if "I4" in self.keyword:
-            self.input_value_type = "Half-sized External Value"
-        elif "I8" in self.keyword:
-            self.input_value_type = "Register-sized External Value"     
-        elif "Reg" in self.keyword:
-            self.input_value_type = "Value from Register"     
-        else:
-            self.input_value_type = "ya broked it"
+        if self.input_value > 2 ** (reg_bit_size - 1) - 1 or \
+                        self.input_value < -1 * (2 ** (reg_bit_size - 1)):
+            self.input_value_type = True
+            self.input_value_bitVec_Constant = And(True,False)
+        else:    
+            if "I4" in self.keyword:
+                self.input_value_type = True
+                self.input_value_bitVec_Constant = extend_to_proper_bitvec(self.input_value, reg_bit_size)
+            elif "I8" in self.keyword:
+                self.input_value_type = True     
+                self.input_value_bitVec_Constant = BitVecVal(self.input_value, reg_bit_size)
+            else:
+                self.input_value_type = False
+                self.input_value_bitVec_Constant = BitVecVal(0,1)
             
         # Store the name in the instruction, reference the actual bitVec object from an external dictionary
-        if "jmp" not in self.keyword:
-            self.target_reg_name = f'r{self.target_reg}_{self.instruction_number}'
+        if "jmp" not in self.keyword or "exit" not in self.keyword:
+            self.target_reg_new_name = f'r{self.target_reg}_{self.instruction_number}'
         else:
-            self.target_reg_name = ""
+            self.target_reg_new_name = ""
 
     def __str__(self):
         print(f'Instruction {self.instruction_number}: {self.full_instruction}')
         # print(f'Source: {self.input_value}\tTarget: {self.target_reg}')
         # print(f'Source Type: {self.input_value_type}\t ')
         return ""  
+
+def extend_to_proper_bitvec(value, reg_size):
+    valueBV = BitVecVal(value, reg_size//2)
+    if value >= 0:
+        return ZeroExt(reg_size//2, valueBV)
+    else:
+        return SignExt(reg_size//2, valueBV)
     
 # Basic Block holds all Instruction_Info commands for reference in a specific chunk of straightline code
 class Basic_Block:
@@ -84,19 +94,6 @@ class Basic_Block:
         self.block_instructions = []
         for instruction_number in instruction_chunk:
             self.block_instructions.append(instruction_list[instruction_number])
-            
-        # Identifying what registers need new SSA names in a block
-        self.variables_changed_in_block = set()
-        for instruction in self.block_instructions:
-            if "jmp" not in instruction.keyword:
-                self.variables_changed_in_block.add(instruction.target_reg)
-                
-        # Holds the numbers of any registers which would require a phi function at the beginning of the block
-        self.phi_functions = []
-        
-        # Since Phi functions aren't known at block creation time, will be updated 
-            # with any names after phi_function_locations has been run on the CFG
-        self.phi_function_named_registers = []
         
         # Gets the most up to date names of registers from the last block
             # If a phi function is required for a variable in the block, 
@@ -109,6 +106,7 @@ class Basic_Block:
         # All of the following relates to block linkage in the CFG representation
         self.initial_instruction = instruction_chunk[0]
         self.final_instruction = instruction_chunk[-1]
+        # print(f'Block starts at #{self.initial_instruction}, ends at #{self.final_instruction}')
         self.input_links = []
         self.output_links = []
         
@@ -120,34 +118,57 @@ class Basic_Block:
         for (start_of_edge, end_of_edge) in graph.edges([self.block_instructions[-1].instruction_number]):
             self.output_links.append(end_of_edge)
             
-    def create_phi_function_register_names(self):
-        for register_number in self.phi_functions:
-            reg_name = f'r{register_number}_Block_{self.block_ID}_phi'
-            self.phi_function_named_registers.append(reg_name)
-            
-    def get_reg_names_for_beginning_of_block(self, block_graph):
-        if self.block_ID == '0':
-            self.register_names_before_block_executes = \
-                [f'r{i}_start' for i in range(self.num_regs)]
-        else:
-            previous_blocks =[block for block in block_graph.predecessors(self)]
-            self.register_names_before_block_executes = copy.deepcopy(previous_blocks[0].register_names_after_block_executes)
-    
-            # Block need a phi function definition
-            for reg_number in self.phi_functions:
-                reg_name = [name for name in self.phi_function_named_registers if f'r{reg_number}' in name]
-                self.register_names_before_block_executes[reg_number] = reg_name[0]
-    
-    def get_reg_names_for_end_of_block(self):
+    # Depending on if I actually need to implement phi functions, the following could be deleted
+        # Identifying what registers need new SSA names in a block
+        self.variables_changed_in_block = set()
         for instruction in self.block_instructions:
-            new_name = instruction.target_reg_name
-            if not new_name == "":
-                self.register_names_after_block_executes[instruction.target_reg] = new_name
+            if "jmp" not in instruction.keyword:
+                self.variables_changed_in_block.add(instruction.target_reg)
                 
-        for reg_num, reg_name in enumerate(self.register_names_after_block_executes):
-            if reg_name == '0':
-                self.register_names_after_block_executes[reg_num] = \
-                    self.register_names_before_block_executes[reg_num]
+        # Holds the numbers of any registers which would require a phi function at the beginning of the block
+        self.phi_functions = []
+        
+        # Since Phi functions aren't known at block creation time, will be updated 
+            # with any names after phi_function_locations has been run on the CFG
+        self.phi_function_named_registers = []
+    # End of phi function stuff
+            
+    def update_start_names(self, block):
+        # print("Updating Names")
+        self.register_names_before_block_executes = \
+            copy.deepcopy(block.register_names_after_block_executes)     
+        # print(f'New Starting Names are now: {self.register_names_before_block_executes}')
+
+
+# Do I need these three functions? Phi Function Questions
+    # def create_phi_function_register_names(self):
+    #     for register_number in self.phi_functions:
+    #         reg_name = f'r{register_number}_Block_{self.block_ID}_phi'
+    #         self.phi_function_named_registers.append(reg_name)  
+    
+    # def get_reg_names_for_beginning_of_block(self, block_graph):
+    #     if self.block_ID == '0':
+    #         self.register_names_before_block_executes = \
+    #             [f'r{i}_start' for i in range(self.num_regs)]
+    #     else:
+    #         previous_blocks =[block for block in block_graph.predecessors(self)]
+    #         self.register_names_before_block_executes = copy.deepcopy(previous_blocks[0].register_names_after_block_executes)
+    
+    #         # Block need a phi function definition
+    #         for reg_number in self.phi_functions:
+    #             reg_name = [name for name in self.phi_function_named_registers if f'r{reg_number}' in name]
+    #             self.register_names_before_block_executes[reg_number] = reg_name[0]
+    
+    # def get_reg_names_for_end_of_block(self):
+    #     for instruction in self.block_instructions:
+    #         new_name = instruction.target_reg_name
+    #         if not new_name == "":
+    #             self.register_names_after_block_executes[instruction.target_reg] = new_name
+                
+    #     for reg_num, reg_name in enumerate(self.register_names_after_block_executes):
+    #         if reg_name == '0':
+    #             self.register_names_after_block_executes[reg_num] = \
+    #                 self.register_names_before_block_executes[reg_num]
         
     def __str__(self):
         print(f'\nInstructions in Block: {self.name}' + '\n' + '*'*20)
@@ -253,7 +274,7 @@ def identify_the_instructions_in_basic_blocks(instruction_list):
 
 # Finding out how to link Basic_Block objects together
 # Does this need to be changed?  I am less than enamored with the next_blocks identification method
-def get_edges_between_basic_blocks(block_list):
+def set_edges_between_basic_blocks(block_list):
     """
     Parameters
     ----------
@@ -269,12 +290,15 @@ def get_edges_between_basic_blocks(block_list):
 
     """
     block_graph = nx.DiGraph()
-    for starting_block in block_list:
-        for forward_link in starting_block.output_links:
-            next_blocks = [block for block in block_list if starting_block.final_instruction
-                                                            in block.input_links]
-            for next_block in next_blocks:
-                block_graph.add_edge(starting_block, next_block)
+    if len(block_list) == 1:
+        block_graph.add_node(block_list[0])
+    else:
+        for starting_block in block_list:
+            for forward_link in starting_block.output_links:
+                next_blocks = [block for block in block_list if starting_block.final_instruction
+                                                                in block.input_links]
+                for next_block in next_blocks:
+                    block_graph.add_edge(starting_block, next_block)
     return block_graph    
 
 def set_up_basic_block_cfg(instruction_list, reg_size, num_regs):
@@ -290,16 +314,12 @@ def set_up_basic_block_cfg(instruction_list, reg_size, num_regs):
         Holds the node/edge connections from the block_list, where nodes are Basic_Block objects
         holding all required Instruction_Info objects
     """
-    instruction_list = [Instruction_Info(instruction, number) for number, instruction in enumerate(instruction_list)]
-    
+    instruction_list = [Instruction_Info(instruction, number, reg_size) for number, instruction in enumerate(instruction_list)]
+
     # Create all the regular register bitVec instances needed.  Does not create phi function registers yet
     register_bitVec_dictionary = {}
-    for reg_num in range(num_regs):
-        reg_name = f'r{reg_num}_start'
-        register_bitVec_dictionary[reg_name] = Register_BitVec(reg_name, reg_size)
-
     for instruction in instruction_list:
-        reg_name = instruction.target_reg_name
+        reg_name = instruction.target_reg_new_name
         register_bitVec_dictionary[reg_name] = Register_BitVec(reg_name, reg_size)
         
     instruction_graph = extract_all_edges_from_instruction_list(instruction_list)
@@ -309,8 +329,7 @@ def set_up_basic_block_cfg(instruction_list, reg_size, num_regs):
     block_list = []
     for block_chunk in block_list_chunks:     
         block_list.append(Basic_Block(num_regs, block_chunk, instruction_list, instruction_graph))
-
-    block_graph = get_edges_between_basic_blocks(block_list)
+    block_graph = set_edges_between_basic_blocks(block_list)
     # nx.draw(block_graph)
 
     return block_graph, register_bitVec_dictionary
@@ -384,87 +403,20 @@ def basic_block_CFG_and_phi_function_setup(instruction_list, reg_size, num_regs)
     register_bitVec_dictionary : TYPE : Dictionary (Strings, Register_BitVec objects)
         The reference list for the actual z3 bitVec variables that will be added to the solver
     """
-    block_graph, register_bitVec_dictionary = set_up_basic_block_cfg(instruction_list, reg_size, num_regs)
-    block_graph = phi_function_locations(block_graph)
     
+    # Commented out all of the things I had done involving phi functions, as I think I found a
+        # way around calculating their positions and using them as bridging variables.
+        # Will require confirmation that my method is not just a quirk of my test cases.
+    
+    block_graph, register_bitVec_dictionary = set_up_basic_block_cfg(instruction_list, reg_size, num_regs)
+
+    # block_graph = phi_function_locations(block_graph)
     # Create the phi function register bit vec objects for reference.  
     # Regular registers are created in set_up_basic_block_cfg
-    for block in block_graph:
-        block.create_phi_function_register_names()
-        block.get_reg_names_for_beginning_of_block(block_graph)
-        block.get_reg_names_for_end_of_block()
-        for new_phi_reg in block.phi_function_named_registers:
-            register_bitVec_dictionary[new_phi_reg] = Register_BitVec(new_phi_reg, reg_size)
+    # for block in block_graph:
+    #     block.create_phi_function_register_names()
+    #     block.get_reg_names_for_beginning_of_block(block_graph)
+    #     block.get_reg_names_for_end_of_block()
+    #     for new_phi_reg in block.phi_function_named_registers:
+    #         register_bitVec_dictionary[new_phi_reg] = Register_BitVec(new_phi_reg, reg_size)
     return block_graph, register_bitVec_dictionary   
-     
-"""
-To Do List
--- Completed -- 
-Naming Scheme for registers 
-    Variable Names:
-        r1_{instruction_number}
-            Can be made during instruction_info object creation
-            Only required for the target_reg new instance
-            Maintain the names required for an instruction inside the instruction_info object for easy reference
-            Maintain the actual bitvec representations in an outside dictionary so you don't recopy them
-        r1_{block_ID}_phi
-
-    Make a new list at the beginning of every block holding the most recent names from the pred block(s)
-    If there are multiple pred blocks, then you would need to combine a specific
-        variable using a phi function (see 2 for specifics)
-    After all the instructions in the block have executed, make a new list for any name updates to be
-        sent to a subsequent block
-        
--- In Progress -- 
-FOL Translations of eBPF
-Identifying Phi Function Conditions
-       
-Phi Function Conditions
-
-1) Find the immediate dominator (ImmDom) of the block in question (PhiN)
-2) for all the immediate predecessor blocks (predBlock) of PhiN
-    2a) Trace the shortest path from the ImmDom to a single predBlock
-    2b) Establish the series of true/false for all the jump conditions along the path
-        2b1) If len(shortest_path) is 0, the only condition is a false from ImmDom
-    2c) Take the conjunction of all conditions from 2b
-    2d) Take the conjunction of 2c with PhiN_register == predBlock_register
-3) PhiN phi function for a register will be the disjunction of all distinct conjunctions from 2d
-
-For the current 12 instruction long test program, we should get the following phi functions
-    
-phi(d_r) = (b = T ^ c = T ^ d_r = c_r) V (b = F ^ d_r = b_r)
-phi(f_r) = (d = T ^ f_r = e_r) V (d = F ^ f_r = d_r)
-phi(g_r) = (a = F ^ g_r = a_r) V (a = T ^ b = T ^ c = F ^ g_r = c_r) V (a = T ^ b = F ^ d = F ^ g_r = f_r)
-
-"""
-
-
-
-# # Driver code for testing
-# start_time = time.time()
-# num_regs = 4
-# reg_size = 8
-
-# # 3 Pred Node at end
-# instruction_list = ["a 1 1", "jmp 1 1 9", "b 1 1",  "jmp 1 1 2", "c 1 1", "jmp 1 1 5", 
-#     "d 1 1", "jmp 1 1 1", "e 1 1", "f 1 1", "g 1 1", "h 1 1"]
-
-# # Multiple variables need phi functions
-# # instruction_list = ["a 1 1", "b 1 2", "jmp 1 2 2", "c 2 1", "jmp 1 1 2", "d 1 1", "e 2 2", "f 2 2", "g 1 2"]
-
-# # Extending the code to arbitrary lengths for stress testing
-# # for _ in range(13):
-# #     instruction_list.extend(instruction_list)
-# print(f'Number of Instructions: {len(instruction_list)}')
-
-# block_graph, register_bitVec_dictionary = basic_block_CFG_and_phi_function_setup(instruction_list, reg_size, num_regs)    
-
-    
-# # print([(key, register_bitVec_dictionary[key].name) for key in register_bitVec_dictionary.keys()])        
-# for node in block_graph:
-#     print("-"*20)
-#     print(node)
-# print("-"*20)
-        
-# end_time = time.time()
-# print('\n-->  Elapsed Time: %0.3f seconds  <--' %(end_time-start_time))

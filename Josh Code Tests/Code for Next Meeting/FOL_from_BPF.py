@@ -8,7 +8,7 @@ Adding a block of instruction to the solver:
     1) execute all the normal instructions in a block, up to a jmp instruction
     2) create a temp solver, and add on the formula up to this point
     3) add the jump condition
-    4) if s.check() == sat, move to the succ block for true, else, succ block for false
+    4) if tempSolver.check() == sat, move to the succ block for true, else, succ block for false
     5) if no succ block, return s.model()
 
 """
@@ -17,23 +17,20 @@ import time, copy
 
 class Program_Holder:
     def __init__(self, instruction_list, reg_size, num_regs):
-        block_graph, register_bitVec_dictionary = \
+        self.block_graph, self.register_bitVec_dictionary = \
             basic_block_CFG_and_phi_function_setup(instruction_list, reg_size, num_regs)   
-            
-        self.start_block = [block_node for (block_node, indegree) in block_graph.in_degree() if indegree == 0]   
-        self.block_graph = block_graph
-        self.register_bitVec_dictionary = register_bitVec_dictionary
-        # print([(key, self.register_bitVec_dictionary[key].name) for key in self.register_bitVec_dictionary.keys()])        
+        self.start_block = [block_node for (block_node, indegree) in self.block_graph.in_degree() if indegree == 0]   
         self.formula = True
         self.end_block = 0
+        # print([(key, self.register_bitVec_dictionary[key].name) for key in self.register_bitVec_dictionary.keys()])        
         
     def add_instructions_from_block(self, block, formula):
         jump_check = True
-        # print(f'\nAdding instructions in block: {block.name}')
+        print(f'\nAdding instructions in block: {block.name}')
         reg_names = copy.deepcopy(block.register_names_before_block_executes)
         reg_bv_dic = self.register_bitVec_dictionary
         for instruction in block.block_instructions:
-            # print(f'\tChecking Instruction: {instruction.instruction_number}: {instruction.full_instruction}')
+            print(f'\tChecking Instruction: {instruction.instruction_number}: {instruction.full_instruction}')
             if "exit" in instruction.keyword:
                 formula = And(formula,  BitVec('exit',1) == 0)
             elif "jmp" not in instruction.keyword:
@@ -55,18 +52,40 @@ class Program_Holder:
                 else:
                     false_block = next_block
             if jump_check:
-                # print(f'Control moves to block: {true_block.name}')
+                print(f'Control moves to block: {true_block.name}')
                 true_block.update_start_names(block)
                 self.add_instructions_from_block(true_block, formula)
             else:
-                # print(f'Control moves to block: {false_block.name}')
+                print(f'Control moves to block: {false_block.name}')
                 false_block.update_start_names(block)
                 self.add_instructions_from_block(false_block, formula)
 
 def check_jump(formula, instruction, reg_names, reg_bv_dic):
+    """
+    Parameters
+    ----------
+    formula : TYPE : z3 Boolean conjunction
+        The current FOL translation of the path through the program
+    
+    instruction : TYPE : Instruction_Info object
+        Contains all the information about a single instruction in the program
+    
+    reg_names : TYPE : List of Strings
+        Holds the names of the most recent versions of all registers
+    
+    reg_bv_dic : TYPE : Dictionary (Strings -> Register_BitVec objects)
+        The reference dictionary for the actual z3 bitVec variables that will be added to the solver.
+        Keys are SSA forms of register names "r{register_number}_{instruction}" where instruction 
+        refers to the specific program instruction where the register was changed to that value
+
+    Returns
+    -------
+    formula_is_sat : TYPE : Boolean
+        Tells the program how control should flow out of the end of a block
+    """
     formula_is_sat = True
     
-    if instruction.input_value_type:
+    if instruction.input_value_is_const:
         source_val = instruction.input_value_bitVec_Constant
     else:
         source_val = reg_bv_dic[reg_names[instruction.input_value]].name
@@ -86,15 +105,19 @@ def check_jump(formula, instruction, reg_names, reg_bv_dic):
 
 def execute_instruction(formula, instruction, reg_names, reg_bv_dic):
     try:
-        if instruction.input_value_type:
+        if instruction.input_value_is_const:
             source_val = instruction.input_value_bitVec_Constant
         else:
             source_val = reg_bv_dic[reg_names[instruction.input_value]].name
         
+        # Key error if register isn't live yet, but that's ok for an inital mov into a reg
         try:    
             target_reg_old_val = reg_bv_dic[reg_names[instruction.target_reg]].name
         except KeyError:
-            pass
+            if "mov" in instruction.keyword:
+                pass
+            else:
+                return And(True, False), reg_names
 
         target_reg_new_val = reg_bv_dic[instruction.target_reg_new_name].name
         
@@ -102,6 +125,8 @@ def execute_instruction(formula, instruction, reg_names, reg_bv_dic):
             constraints = target_reg_new_val == target_reg_old_val + source_val
         elif "mov" in instruction.keyword:
             constraints = target_reg_new_val == source_val
+        
+        # The keyword isn't recognized, add a poision pill to force an unsat
         else:
             constraints = And(True, False)
             
@@ -110,7 +135,9 @@ def execute_instruction(formula, instruction, reg_names, reg_bv_dic):
         return formula, reg_names
     
     except Z3Exception:
-        return And(False, True), reg_names
+        return And(True, False), reg_names
+    except KeyError:
+        return And(True, False), reg_names
     
 def translate_to_bpf_in_c(program_list):
     """
@@ -193,6 +220,7 @@ def create_program(instruction_list, num_regs = 4, reg_size = 8):
     program.add_instructions_from_block(program.start_block[0], True)
     z3Solver = Solver()
     z3Solver.add(program.formula)
+    print("\n-->  Program Results  <--")
     if z3Solver.check() == sat:
         # print (z3Solver.model())
         print("Model found a solution for the program:\n")
@@ -202,7 +230,6 @@ def create_program(instruction_list, num_regs = 4, reg_size = 8):
                 print(f'\tFinal Value for Register {reg_num}: {z3Solver.model()[reg_name]}')
             else:
                 print(f'\tFinal Value for Register {reg_num}: Not Initialized')
-                
     else:
         print ("Model couldn't find a solution for the program: \n\tUNSATISFIABLE")
         
@@ -213,6 +240,4 @@ def create_program(instruction_list, num_regs = 4, reg_size = 8):
     #     print("-"*20)
     #     print(node)
     # print("-"*20)
-
     # translate_to_bpf_in_c(instruction_list)
-# create_program(instruction_list)

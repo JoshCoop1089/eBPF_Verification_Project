@@ -60,15 +60,15 @@ def get_source_values(register_size, initialized_registers):
         
         # imm4
         if source_val_type == 0:
-            min_reg_value = -1 * 2 ** (register_size//2 - 1)
-            max_reg_value = 2 ** (register_size//2 - 1) - 1
+            min_reg_value = -1 * 2 ** (register_size//8 - 1)
+            max_reg_value = 2 ** (register_size//8 - 1) - 1
             source_value = random.randint(min_reg_value, max_reg_value)
             source_value_keyword = "I4"
             
         # imm8
         elif source_val_type == 1:
-            min_reg_value = -1 * 2 ** (register_size - 1)
-            max_reg_value = 2 ** (register_size - 1) - 1
+            min_reg_value = -1 * 2 ** (register_size//8 - 1)
+            max_reg_value = 2 ** (register_size//8 - 1) - 1
             source_value = random.randint(min_reg_value, max_reg_value)
             source_value_keyword = "I8"
     
@@ -108,19 +108,19 @@ def random_program_creator(number_of_instructions, number_of_registers, register
     
     # First Instruction must initialize a register to a value using a mov command
     source_value, source_value_keyword = get_source_values(register_size, initialized_registers)
-    destination_register = destination_value = random.randint(0, number_of_registers - 1)
+    destination_register = random.randint(0, number_of_registers - 1)
     initialized_registers.append(destination_register)
-    instruction_list.append(f'mov{source_value_keyword} {source_value} {destination_value}')
+    instruction_list.append(f'mov{source_value_keyword} {source_value} {destination_register}')
 
     # Randomly generate the rest of the instructions
     for instruction_number in range(1,number_of_instructions-1):
         
-        current_allowed_instructions = ["add", "mov", "jne"]
+        current_allowed_instructions = ["add", "mov", "jmp"]
         instruction_type = random.choice(current_allowed_instructions)
         
         # Second to last instruction cannot be a jump, since that would automatically make
         # the offset val jump out of the length of the program
-        while instruction_number == number_of_instructions - 2 and instruction_type == "jne":
+        while instruction_number == number_of_instructions - 2 and instruction_type == "jmp":
             instruction_type = random.choice(current_allowed_instructions)
 
         source_value, source_value_keyword = get_source_values(register_size, initialized_registers)
@@ -139,7 +139,7 @@ def random_program_creator(number_of_instructions, number_of_registers, register
         instruction = f'{instruction_type}{source_value_keyword} {source_value} {destination_value}'
         
         # Find an offset value for jump instructions that is within the bounds of the total number of instructions
-        if instruction_type == "jne":
+        if instruction_type == "jmp":
             number_of_instructions_left = number_of_instructions - instruction_number - 2
             if number_of_instructions_left == 0:
                 offset_val = 1
@@ -214,9 +214,9 @@ def translate_to_bpf_in_c(program_list):
         # Format for jump commands
         elif len(split_ins) == 4:
             offset = int(split_ins[3])
-            if keyword == "jneI4" or keyword == "jneI8":
+            if keyword == "jmpI4" or keyword == "jmpI8":
                 instruction = f'BPF_JMP_IMM(BPF_JNE, BPF_REG_{target_reg}, {input_value}, {offset})'
-            elif keyword == "jneR":
+            elif keyword == "jmpR":
                 instruction = f'BPF_JMP_REG(BPF_JNE, BPF_REG_{target_reg}, BPF_REG_{input_value}, {offset})'
         
         # Formatting a single output string for direct copy into bpf_step
@@ -227,9 +227,9 @@ def translate_to_bpf_in_c(program_list):
     
     return output
 
-# Create a program with 16 instructions, and 4 registers of 8 bits each
-prog_list = random_program_creator(16, 4, 8)   
-bpf_list = translate_to_bpf_in_c(prog_list)
+# # Create a program with 16 instructions, and 4 registers of 8 bits each
+# prog_list = random_program_creator(16, 4, 8)   
+# bpf_list = translate_to_bpf_in_c(prog_list)
 
 # Sample output
 """

@@ -1,5 +1,12 @@
 # -*- coding: utf-8 -*-
 """
+Created on Sat Aug 15 19:39:17 2020
+
+@author: joshc
+"""
+
+# -*- coding: utf-8 -*-
+"""
 Created on Mon Aug 10 16:07:01 2020
 
 @author: joshc
@@ -144,6 +151,9 @@ class Basic_Block:
         # Stores all reg names after execution of the block to pass onto the next block in the CFG
         self.register_names_after_block_executes = ['0' for _ in range(self.num_regs)]
         
+        # Optimization for not repeatedly doing sat checks on the whole path formula 
+        self.in_block_formula = True
+        
         # Block edge creation helpers in the CFG representation
         self.initial_instruction = instruction_chunk[0]
         self.final_instruction = instruction_chunk[-1]
@@ -175,7 +185,7 @@ class Basic_Block:
         # # End of phi function stuff
         # # **************************************
             
-    def update_start_names(self, block):
+    def update_start_names(self, block, register_bitVec_dictionary):
         """
         Parameters
         ----------
@@ -187,6 +197,14 @@ class Basic_Block:
         -------
         None.
         """
+        tempz3 = Solver()
+        tempz3.add(block.in_block_formula)
+        if tempz3.check() == sat:
+            for reg_num, reg_name in enumerate(block.register_names_after_block_executes):
+                if reg_name != '0':
+                    reg_name = register_bitVec_dictionary[reg_name].name
+                    self.in_block_formula = And(self.in_block_formula, reg_name == tempz3.model()[reg_name])
+        
         # print("Updating Names")
         self.register_names_before_block_executes = \
             copy.deepcopy(block.register_names_after_block_executes)     

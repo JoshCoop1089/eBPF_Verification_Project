@@ -60,15 +60,15 @@ def get_source_values(register_size, initialized_registers):
         
         # imm4
         if source_val_type == 0:
-            min_reg_value = -1 * 2 ** (register_size//8 - 1)
-            max_reg_value = 2 ** (register_size//8 - 1) - 1
+            min_reg_value = -1 * 2 ** (register_size//4 - 1)
+            max_reg_value = 2 ** (register_size//4 - 1) - 1
             source_value = random.randint(min_reg_value, max_reg_value)
             source_value_keyword = "I4"
             
         # imm8
         elif source_val_type == 1:
-            min_reg_value = -1 * 2 ** (register_size//8 - 1)
-            max_reg_value = 2 ** (register_size//8 - 1) - 1
+            min_reg_value = -1 * 2 ** (register_size//4 - 1)
+            max_reg_value = 2 ** (register_size//4 - 1) - 1
             source_value = random.randint(min_reg_value, max_reg_value)
             source_value_keyword = "I8"
     
@@ -153,7 +153,7 @@ def random_program_creator(number_of_instructions, number_of_registers, register
     instruction_list.append("exit 0 0")
     
     # For debugging
-    print(instruction_list)
+    # print(instruction_list)
     
     return instruction_list
     
@@ -226,44 +226,3 @@ def translate_to_bpf_in_c(program_list):
     print(output)
     
     return output
-
-# # Create a program with 16 instructions, and 4 registers of 8 bits each
-# prog_list = random_program_creator(16, 4, 8)   
-# bpf_list = translate_to_bpf_in_c(prog_list)
-
-# Sample output
-"""
-['movI8 107 3', 'addR 3 3', 'addI4 4 3', 'jneR 3 3 5', 
- 'movI4 6 2', 'jneR 3 2 2', 'movI8 -92 3', 'movR 2 3', 
- 'addI4 3 2', 'addI4 0 2', 'addI8 32 3', 'addI8 15 3', 
- 'movI4 3 3', 'addR 2 2', 'addR 3 3', 'exit 0 0']
-
-The full program in Python keyword format is:
-0:	movI8 107 3
-1:	addR 3 3
-2:	addI4 4 3
-3:	jneR 3 3 5
-4:	movI4 6 2
-5:	jneR 3 2 2
-6:	movI8 -92 3
-7:	movR 2 3
-8:	addI4 3 2
-9:	addI4 0 2
-10:	addI8 32 3
-11:	addI8 15 3
-12:	movI4 3 3
-13:	addR 2 2
-14:	addR 3 3
-15:	exit 0 0
-
-This program would be written as the following for BPF in C:
-
-BPF_MOV64_IMM(BPF_REG_3, 107), BPF_ALU64_REG(BPF_ADD, BPF_REG_3, BPF_REG_3), 
-BPF_ALU32_IMM(BPF_ADD, BPF_REG_3, 4), BPF_JMP_REG(BPF_JNE, BPF_REG_3, BPF_REG_3, 5), 
-BPF_MOV64_IMM(BPF_REG_2, 6), BPF_JMP_REG(BPF_JNE, BPF_REG_2, BPF_REG_3, 2), 
-BPF_MOV64_IMM(BPF_REG_3, -92), BPF_MOV64_REG(BPF_REG_3, BPF_REG_2), 
-BPF_ALU32_IMM(BPF_ADD, BPF_REG_2, 3), BPF_ALU32_IMM(BPF_ADD, BPF_REG_2, 0), 
-BPF_ALU64_IMM(BPF_ADD, BPF_REG_3, 32), BPF_ALU64_IMM(BPF_ADD, BPF_REG_3, 15), 
-BPF_MOV64_IMM(BPF_REG_3, 3), BPF_ALU64_REG(BPF_ADD, BPF_REG_2, BPF_REG_2), 
-BPF_ALU64_REG(BPF_ADD, BPF_REG_3, BPF_REG_3), BPF_EXIT_INSN(), 
-"""

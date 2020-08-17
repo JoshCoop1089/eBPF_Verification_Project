@@ -185,20 +185,31 @@ our code:
         determine the i'th bit
         if i is 1, add 2^i (starts at 1) * value to the accumulator
 """
+
 def hma(base, value, mask):
 
     acc = tnum(base.min, base.range)
+    bitPos = BitVecVal(1, bitLength)
     
     #go through every bit in the list
     for bitnum in range(0, bitLength):
         bit = z3.Extract(bitnum, bitnum, mask)
 
-        #multiply the value of toAdd by bit. 0 will result in 0 (add nothing), 1 will result in 1 (unchanged)
-        toAdd = tnum(0, BitVecVal(bit * pow(2, bitnum) * value, bitLength))
+        solver = Solver()
+        solver.add(bit == 1)
         
+        finalValue = BV2Int(BitVecVal(bit, bitLength))
+        finalValue *= BV2Int(value)
+        finalValue *= BV2Int(bit)
+
+        #multiply the value of toAdd by bit. 0 will result in 0 (add nothing), 1 will result in 1 (unchanged)
+        toAdd = tnum(BitVecVal(0, bitLength), BitVecVal(finalValue, bitLength))
+
+        LShL(bitPos, 1)
         acc = acc.add(toAdd)
 
     return acc
+#"""
     
 #             #
 #             #
@@ -212,7 +223,7 @@ n1 = tnum(BitVecVal(2, bitLength), BitVecVal(0, bitLength))
 n2 = tnum(BitVecVal(2, bitLength), BitVecVal(0, bitLength))
 n3 = tnum(BitVec("n3_value", bitLength), BitVec("n3_range", bitLength))
 
-solver.add(n3 == n1.mult(n2))
+solver.add(n3.tnum_eq(n1.mult(n2)))
 
 """"
 #Alright, the cool test
@@ -253,7 +264,7 @@ t2 = 11111100 | 00000000 = 252 | 0
 t3 = 00011111 | 11100000 =  31 | 224
 """
 
-
 if solver.check() == sat:
    m = solver.model()
    print(m)
+   print(n3)

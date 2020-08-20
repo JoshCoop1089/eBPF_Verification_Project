@@ -20,6 +20,11 @@ This means that lower + range is the maximum bound for tnum (in this case, 11)
 
 This also means if we want to check if a bit is unknown, we can check if that
 bit is set to 1 in the range.
+
+The actual tnum.c code instead uses 'value' for min, and 'mask' for range. Whens
+starting out, I continued to use min and range because they were conducive to my
+understanding. As time progressed, I began to use mask and value every so often
+so that it's easier to translate back and forth between this and the source code.
 '''
 from z3 import *
 
@@ -28,15 +33,17 @@ bitLength = 8
 
 class tnum:
 
+    #INPUT - both fields should be BitVec/BitVecVal
     def __init__(self, m, r):
         self.min = m
         self.range = r
 
+    #not actually aware of when this method is used
     def __str__(self):
         return "<min: " + str(self.min) + ", range: " + str(self.range) + ">"
 
 
-    #when the sat solver generates tnums we have to ensure it complies with good tnum practices
+    #RETURN - a z3 expression for whether this is a valid tnum
     def validate(self):
         """
         intended result: every 1-bit of self.range is a 0-bit in self.min
@@ -49,25 +56,34 @@ class tnum:
 
         unknownCheck = self.min & ~self.range
         return self.min == unknownCheck
-        
-    
-    def lshift(self, i):
-        LShL(self.mini, i)
-        LShL(self.range, i)
 
+        
+    #ACTION - does a logical shift left on both the min and the range of this tnum
+    def lshift(self, i):
+        LShL(self.min, i)
+        LShL(self.range, i)
+        
+    #ACTION - does a logical shift right on both the min and the range of this tnum
     def rshift(self, i):
         LShR(self.min, i)
         LShR(self.range, i)
 
+    #RETURN - a z3 expression for if this tnum is a constant (range/mask is 0)
     def is_const(self):
         return self.range == 0
 
+    #RETURN - a z3 expression for if this tnum is both a constant and equal to a specific constant
     def eq_const(self, c):
         return And(self.is_const(), self.min == c)
 
+    #RETURN - a z3 expression for if this tnum is equal to another tnum. Don't use == !!!
     def tnum_eq(self, other):
         return And(self.min == other.min, self.range == other.range)
 
+    #INPUT - another tnum
+    #RETURN - the sum of this tnum and the other input
+
+    #for example, x += y would look like x = x.add(y)
     def add(self, other):
         """
         verifier does the following:
@@ -92,6 +108,8 @@ class tnum:
         
         return tnum(sv & (~mu), mu)
 
+    #INPUT - another tnum
+    #RETURN - this tnum minus the other given tnum
     def sub(self, other):
         dv = self.min - other.min;
         
@@ -103,33 +121,44 @@ class tnum:
         return tnum(dv & (~mu), mu)
 
     #If erroring, look at the hma subfunction first
+    #INPUT - another tnum
+    #RETURN - this tnum multiplied by the other given tnum
     def mult(self, other):
         pi = self.min * other.min
         acc = hma(tnum(pi, 0), self.range, other.range | other.min)
         return hma(acc, other.range, self.min)
 
+    #INPUT - another tnum
+    #RETURN - the logical AND of this tnum and another tnum
     def tnum_and(self, other):
         alpha = self.min | self.range
         beta = other.min | other.range
         v = self.min & other.min
         return tnum(v, alpha & beta & ~v)
 
+    #INPUT - another tnum
+    #RETURN - the logical OR of this tnum and another tnum
     def tnum_or(self, other):
         v = self.min | other.min
         mu = self.range | other.range
         return tnum(v, mu & ~v)
 
+    #INPUT - another tnum
+    #RETURN - the logical XOR of this tnum and another tnum
     def tnum_xor(self, other):
         v = self.min ^ other.min
         mu = self.range | other.range
         return tnum(v & ~mu, mu)
 
-    def interect(self, other):
+    #INPUT - another tnum
+    #RETURN - the intersection of this tnum and another tnum
+    def intersect(self, other):
         v = self.min | other.min
         mu = self.range & other.range
         return tnum(v & ~mu, mu)
 
-    #should check whether 'other' is a subset of 'self'
+    #INPUT - another tnum
+    #RETURN - a z3 equation for if the other tnum is contained within this tnum (the values it represents are a subset of this tnum's values)
     def tnum_in(self, other):
         """
         if (other.range & ~self.range) is not 0:
@@ -163,43 +192,48 @@ class tnum:
 
     
 
-#current error - type mismatch stuff
-"""
-half-multiply, apparently a static intermediate step to multiply
+#works?
 
-Idea: While the mask is nonzero (it has at least one 1), check the rightmost bit. If it's a 1, then add the value to the accumulator.
-        Then, rightshift the mask (move one bit further in) and leftshift the value (you're working with the 2^n+1 bit, so multiply
-        your value by 2)
 
-original code:
-
-static struct tnum hma(struct tnum acc, u64 value, u64 mask)
-    while (mask) {
-        if (mask & 1)
-            acc = tnum_add(acc, TNUM(0, value));
-        mask >>= 1;
-        value <<= 1;
-    }
-    return acc;
-
-our code:
-
-hma(a, v, m):
-    for i from 1 -> bitlength:
-        if mask[i] == 1
-            accumulate()
-        value <<= 1
-    return acc
-
-Note - Objects persist across python methods, as they would in Java.
-        This means that we have to copy the values into a new object
-        before editing/using them.
-"""
-
-#acc: tnum
-#value: BitVec
-#mask: BitVec
+#INPUT - acc: tnum | value: BitVec | mask: BitVec
+#RETURN - the result of the intermediate algorithm
 def hma(acc, value, mask):
+    """
+    half-multiply, a static intermediate step to multiply
+
+    Idea: While the mask is nonzero (it has at least one 1), check the rightmost bit. If it's a 1, then add the value to the accumulator.
+            Then, rightshift the mask (move one bit further in) and leftshift the value (you're working with the 2^n+1 bit, so multiply
+            your value by 2)
+
+    original code:
+
+    static struct tnum hma(struct tnum acc, u64 value, u64 mask)
+        while (mask) {
+            if (mask & 1)
+                acc = tnum_add(acc, TNUM(0, value));
+            mask >>= 1;
+            value <<= 1;
+        }
+        return acc;
+
+    ~~~~~~~~~~~~~~~~~~
+
+    our code:
+
+    hma(a, v, m):
+        for i from 1 -> bitlength:
+            if mask[i] == 1
+                accumulate()
+            value <<= 1
+        return acc
+
+    Note - Objects persist across python methods, as they would in Java.
+            This means that we have to copy the values into a new object
+            before editing/using them.
+
+
+            ...or maybe not I'm not positive
+    """
     
     for i in range(0, bitLength):
         bit = z3.Extract(i, i, mask)

@@ -36,7 +36,7 @@ Assumptions about instruction links:
         1) Directly forward (all instructions link to the next one)
         2) Jump offset to a future instruction (found in the Instruction_Info.offset value)
 """
-import copy, binascii
+import copy
 import networkx as nx
 from z3 import *
 
@@ -71,13 +71,12 @@ class Instruction_Info:
         # Breaking a keyword into the parts needed to interpret it
         split_ins = instruction.split(" ")        
         self.keyword = split_ins[0]
-        self.input_value, self.target_reg, self.offset = 0,0,0
-        if len(split_ins) > 1:
-            self.input_value = int(split_ins[2]) if not "0x" in split_ins[2] else int(split_ins[2], 16)
-            self.target_reg = int(split_ins[1])        
-            if "J" in self.keyword:
-                self.offset = int(split_ins[3])
-
+        self.input_value = int(split_ins[1])
+        self.target_reg = int(split_ins[2])        
+        if "jmp" in self.keyword:
+            self.offset = int(split_ins[3])
+        else:
+            self.offset = 0
         
         # Defining how to treat self.input_value (as a constant, or register location)
         if self.input_value > 2 ** (reg_bit_size - 1) - 1 or \
@@ -87,19 +86,18 @@ class Instruction_Info:
             a = Int('a')
             self.input_value_bitVec_Constant = And(a == 2, a == 1)
         else:    
-            if "32XC" in self.keyword:
+            if "I4" in self.keyword:
                 self.input_value_is_const = True
                 self.input_value_bitVec_Constant = extend_to_proper_bitvec(self.input_value, reg_bit_size)
-            elif "64XC" in self.keyword or "XC" in self.keyword:
+            elif "I8" in self.keyword:
                 self.input_value_is_const = True     
                 self.input_value_bitVec_Constant = BitVecVal(self.input_value, reg_bit_size)
             else:
-                # print("current version of program treats 32 bit and 64 bit register commands as 64 bit")
                 self.input_value_is_const = False
                 self.input_value_bitVec_Constant = False
             
         # Store the name in the instruction, reference the actual bitVec object from an external dictionary
-        if "J" not in self.keyword or "EXIT" not in self.keyword:
+        if "jmp" not in self.keyword or "exit" not in self.keyword:
             self.target_reg_new_name = f'r{self.target_reg}_{self.instruction_number}'
         else:
             self.target_reg_new_name = ""
@@ -215,8 +213,7 @@ class Basic_Block:
                     self.in_block_formula = And(self.in_block_formula, reg_name == tempz3.model()[reg_name])
         
         # print("Updating Names")
-        self.register_names_before_block_executes = \
-            copy.deepcopy(block.register_names_after_block_executes)     
+        self.register_names_before_block_executes = block.register_names_after_block_executes[:]
         # print(f'New Starting Names are now: {self.register_names_before_block_executes}')
 
     # Do I need these two functions? Phi Function Questions

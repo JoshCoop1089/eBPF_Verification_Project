@@ -24,6 +24,7 @@ Programs Failed, reasons unknown:
 """
 from FOL_from_BPF import *
 from Random_Program_Creation import *
+from FOLT import *
 
 # # Basic Default Test
 # print("-"*25)
@@ -31,19 +32,21 @@ from Random_Program_Creation import *
 # create_program(program_list, 3, 64)
 # print("-"*25)
 
-# # Program with no jumps, only add/mov
-# print("-"*25)
-# print("Program with no jumps, only add/mov")
-# program_list = ["movI8 1 0" , "movI8 3 1", "addR 0 1", "movI4 -1 2", "addR 2 1", "addI4 -3 2", "exit 0 0"]
-# create_program(program_list, 3, 64)
-# print("-"*25)
+# Program with no jumps, only add/mov
+print("-"*25)
+print("Program with no jumps, only add/mov")
+program_list = ["movI8 1 0" , "movI8 3 1", "addR 0 1", "movI4 -1 2", "addR 2 1", "addI4 -3 2", "exit 0 0"]
+create_program(program_list, 3, 64, [1,2,3])
+print("-"*25)
 
-# Program with single jump, both paths converge
-print("-"*25)
-print("Program with single jump, both paths converge")
-program_list = ["movI8 1 1", "jmpR 1 1 2", "addI8 1 1", "addI4 -1 1", "addR 1 1", "exit 0 0"]
-create_program(program_list, 3, 64)
-print("-"*25)
+# # Program with single jump, both paths converge
+# print("-"*25)
+# print("Program with single jump, both paths converge")
+# program_list = ["movI8 1 1", "jmpR 1 1 2", "addI8 1 1", "addI4 -1 1", "addR 1 1", "exit 0 0"]
+# create_program(program_list, 3, 64)
+# create_program_test(program_list, 3, 64)
+
+# print("-"*25)
 
 # # Program with multiple jumps, jumps have overlapping endpoints
 # print("-"*25)
@@ -88,12 +91,13 @@ print("-"*25)
 # create_program(program_list, 3, 64)
 # print("-"*25)
 
-# Multiple changing registers
-print("-"*25)
-print("Multiple changing registers")
-program_list = ["movI8 1 1", "movI8 1 2", "jmpR 1 2 2", "addI4 2 1", "jmpR 2 1 2", "addI8 1 1", "addR 2 2", "addR 2 2", "addR 1 2"]
-create_program(program_list, 3, 64)
-print("-"*25)
+# # Multiple changing registers
+# print("-"*25)
+# print("Multiple changing registers")
+# program_list = ["movI8 1 1", "movI8 1 2", "jmpR 1 2 2", "addI4 2 1", "jmpR 2 1 2", "addI8 1 1", "addR 2 2", "addR 2 2", "addR 1 2"]
+# create_program(program_list, 3, 64)
+# create_program_test(program_list, 3, 64)
+# print("-"*25)
 
 # # Literally 70% jumps
 # print("-"*25)
@@ -108,13 +112,16 @@ print("-"*25)
 # program_list = ["movI8 1 2", "jmpR 2 2 8",  "jmpR 2 2 5", "jmpI4 1 2 1", "addI4 1 2",
 #                 "jmpI4 1 2 3", "jmpR 2 2 2", "jmpI8 1 2 2", "addR 2 2", "jmpI4 1 2 1", "addR 2 2"]
 # # Regular test
-# for i in range(14):
+# for i in range(12):
 #     print("\n"+ "-!- "*15)
 #     program_list = ["movI8 1 1", "movI8 1 2", "jmpR 1 2 2", "addI4 2 1", "jmpR 2 1 2", "addI8 1 1", "addR 2 2", "addR 2 2", "addR 1 2"]
 #     for _ in range(i+1):
 #         program_list.extend(program_list)
 #     program_list.append("exit 0 0")
+#     print("Deepcopy lists")
 #     create_program(program_list, 3, 64)
+#     print("Slice Copy lists")
+#     create_program_test(program_list, 3, 64)
 
 # # Random Program time! Who knows if they work, it's a mystery.  But, will they run!?!?!
 # print("-"*25)

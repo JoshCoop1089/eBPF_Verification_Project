@@ -258,7 +258,11 @@ n1 = tnum(BitVecVal(4, bitLength), BitVecVal(0, bitLength))
 n2 = tnum(BitVecVal(2, bitLength), BitVecVal(0, bitLength))
 n3 = tnum(BitVec("n3_value", bitLength), BitVec("n3_range", bitLength))
 
-solver.add(n3.tnum_eq(n1.mult(n2)))
+n4 = tnum(BitVec("n4_value", bitLength), BitVec("n4_range", bitLength))
+n5 = tnum(BitVecVal(16, bitLength), BitVecVal(0, bitLength))
+
+solver.add(n5.tnum_eq(n1.mult(n4)))
 if solver.check() == sat:
    m = solver.model()
    print(m)
+

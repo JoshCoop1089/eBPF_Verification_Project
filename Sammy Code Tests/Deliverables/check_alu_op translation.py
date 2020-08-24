@@ -58,6 +58,13 @@ This is in the place of get_reg_arg, which will check to see
 if a register is valid, and returns False to show there is no
 error. For now, we are assuming that all registers are valid,
 so I'm just using False instead.
+
+The variables represent a line number in the verifier. This code
+is a translation of check_alu_op, which is about L#5999 in the
+BPF verifier.c source code. Therefore, L41_if represents the 'if'
+statement on what is currently line 6040, L51_else represents
+the 'else' statement that is on line 6050, and so on.
+
 """
 
 L41_if = Bool("L41_if")

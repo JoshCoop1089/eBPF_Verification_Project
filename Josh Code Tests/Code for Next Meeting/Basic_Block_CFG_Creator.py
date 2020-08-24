@@ -36,7 +36,7 @@ Assumptions about instruction links:
         1) Directly forward (all instructions link to the next one)
         2) Jump offset to a future instruction (found in the Instruction_Info.offset value)
 """
-import copy, binascii
+import copy, bitstring
 import networkx as nx
 from z3 import *
 
@@ -73,10 +73,13 @@ class Instruction_Info:
         self.keyword = split_ins[0]
         self.input_value, self.target_reg, self.offset = 0,0,0
         if len(split_ins) > 1:
-            self.input_value = int(split_ins[2]) if not "0x" in split_ins[2] else int(split_ins[2], 16)
             self.target_reg = int(split_ins[1])        
+            self.input_value = get_input_value(split_ins[2])
             if "J" in self.keyword:
-                self.offset = int(split_ins[3])
+                try:
+                    self.offset = int(split_ins[3])
+                except Exception:
+                    pass
 
         
         # Defining how to treat self.input_value (as a constant, or register location)
@@ -108,7 +111,20 @@ class Instruction_Info:
         print(f'Instruction {self.instruction_number}: {self.full_instruction}')
         # print(f'Source: {self.input_value}\tTarget: {self.target_reg}')
         return ""  
-    
+def get_input_value(instruction_string):
+    input_value = 0
+    if "0x" in instruction_string:
+        temp_value = int(instruction_string, 16)
+        mask = 2**31
+        if temp_value > mask:
+            input_value = -(temp_value & mask) + (temp_value & ~mask)
+        else:
+            input_value = temp_value
+    else:
+        input_value = int(instruction_string) 
+    return input_value    
+
+
 # Extending half sized constant inputs to be register sized (assuming no one tries to use odd sized registers)
 def extend_to_proper_bitvec(value, reg_size):
     valueBV = BitVecVal(value, reg_size//2)
@@ -265,14 +281,16 @@ def extract_all_edges_from_instruction_list(instruction_list):
         Holds the node/edge connections from the instruction_list in a directed graph
         
     Assumptions about instruction links:
-        1) Directly forward (all instructions link to the next one)
-        2) Jump offset to a future instruction (found in the Instruction_Info.offset value)
+        1) Directly forward (all instructions except exits link to the next one)
+        2) Exit instructions do not make a forward link, but can be an end point for a link
+        3) Jump offset to a future instruction (found in the Instruction_Info.offset value)
     """
     instruction_graph = nx.DiGraph()
     for instruction_number, instruction in enumerate(instruction_list):
         if instruction_number == len(instruction_list) - 1:
             break
-        instruction_graph.add_edge(instruction_number, instruction_number+1)
+        if instruction.keyword != "EXIT":
+            instruction_graph.add_edge(instruction_number, instruction_number+1)
         if instruction.offset != 0:
             instruction_graph.add_edge(instruction_number, instruction_number+instruction.offset+1)
     return instruction_graph
@@ -300,7 +318,7 @@ def identify_leaders(instruction_list):
         elif instruction_number == 0:
             leader_set.add(instruction_number)
         else:
-            if "jmp" in instruction.keyword:
+            if "J" in instruction.keyword:
                 # Rule 2 - Instruction L is a leader if there is another instruction which jumps to it
                 leader_set.add(instruction_number + instruction.offset + 1)
                 
@@ -366,7 +384,8 @@ def set_edges_between_basic_blocks(block_list):
             next_blocks = [block for block in block_list 
                                if starting_block.final_instruction in block.input_links]
             for next_block in next_blocks:
-                block_graph.add_edge(starting_block, next_block)
+                if starting_block.block_instructions[-1].keyword != "EXIT":
+                    block_graph.add_edge(starting_block, next_block)
     return block_graph    
 
 def set_up_basic_block_cfg(instruction_list, reg_size, num_regs):
@@ -415,8 +434,10 @@ def set_up_basic_block_cfg(instruction_list, reg_size, num_regs):
 
     # Visualization options for the graphs, only show connections, haven't figured
         # out how to make the nodes be named in the output picture yet
-    # nx.draw(instruction_graph)
-    # nx.draw(block_graph)
+    # nx.draw_planar(instruction_graph,  with_labels = True)
+    # block_labels = {node:node.name for node in block_graph}
+    # nx.draw_planar(block_graph, labels = block_labels, with_labels = True)
+    
     return block_graph, register_bitVec_dictionary, block_list[0]
     
 # Identify and place phi function for required register changes

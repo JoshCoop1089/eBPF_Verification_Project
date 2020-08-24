@@ -98,7 +98,7 @@ class Program_Holder:
             end_instruction = block.final_instruction
             
             # Reached a block with no outgoing links (ie program end point)
-            if len(block.output_links) == 0:
+            if len(block.output_links) == 0 or block.block_instructions[-1].keyword == "EXIT":
                 self.formula = formula
                 self.end_block = block
                 return block, formula
@@ -112,11 +112,11 @@ class Program_Holder:
                     else:
                         false_block = next_block
                 if decide_what_branch:
-                    # print(f'Control moves to block: {true_block.name}')
+                    print(f'Control moves to block: {true_block.name}')
                     true_block.update_start_names(block, reg_bv_dic)
                     return true_block, formula
                 else:
-                    # print(f'Control moves to block: {false_block.name}')
+                    print(f'Control moves to block: {false_block.name}')
                     false_block.update_start_names(block, reg_bv_dic)
                     return false_block, formula 
 
@@ -147,7 +147,8 @@ def check_jump(formula, instruction, reg_names, reg_bv_dic):
     Returns
     -------
     formula_is_sat : TYPE : Boolean
-        Tells the program how control should flow out of the end of a block
+        Tells the program how control should flow out of the end of a block.  
+        False moves the program to the offset block, true to the next instruction
         
     jump_reference_valid : TYPE : Boolean
         Error check on the inputs to the jump condition
@@ -165,9 +166,9 @@ def check_jump(formula, instruction, reg_names, reg_bv_dic):
         elif "EQ" in instruction.keyword:
             jump_condition = Not(source_val == target_reg_val)
         elif "SGT" in instruction.keyword:
-            jump_condition = source_val > target_reg_val
+            jump_condition = Not(target_reg_val > source_val)
         elif "GT" in instruction.keyword:
-            jump_condition = source_val >= target_reg_val
+            jump_condition = Not(UGT(target_reg_val, source_val))
         else:
             return False, True
             
@@ -251,11 +252,11 @@ def execute_instruction(formula, in_block_formula, instruction, reg_names, reg_b
         elif "MOV" in instruction.keyword:
             constraints = target_reg_new_val == source_val
         elif "LSH" in instruction.keyword:
-            constraints = target_reg_new_val == source_val << instruction.target_reg
+            constraints = target_reg_new_val == target_reg_old_val << instruction.input_value
         elif "ARSH" in instruction.keyword:
-            constraints = target_reg_new_val == source_val >> instruction.target_reg
+            constraints = target_reg_new_val == target_reg_old_val >> instruction.input_value
         elif "RSH" in instruction.keyword:
-            constraints = target_reg_new_val == LShR(source_val, instruction.target_reg)
+            constraints = target_reg_new_val == LShR(target_reg_old_val, instruction.input_value)
         
         # The keyword isn't recognized, add a poision pill to force an unsat
         else:
@@ -386,9 +387,9 @@ def create_program(instructions, num_regs = 4, reg_size = 8, inputs = []):
     instruction_list = get_runtime_parameters(inputs)
     instruction_list.extend(instructions)
     print(f'Number of Instructions: {len(instruction_list)}')
-    # print("The full program in Python keyword format is:\n")
-    # for number, ins in enumerate(instruction_list):
-    #     print ("\t"+ str(number) + ":\t" + ins)
+    print("The full program in Python keyword format is:\n")
+    for number, ins in enumerate(instruction_list):
+        print ("\t"+ str(number) + ":\t" + ins)
 
     start_time = time.time()
     program = Program_Holder(instruction_list, reg_size, num_regs)
@@ -399,6 +400,8 @@ def create_program(instructions, num_regs = 4, reg_size = 8, inputs = []):
     formula = True
     while not program.program_error and block.output_links:
         block, formula = program.add_instructions_from_block(block, formula)
+        # if block.block_instructions[-1].keyword == "EXIT":
+        #     break
     if not program.program_error:
         block, formula = program.add_instructions_from_block(block, formula)
         program.formula = formula

@@ -252,21 +252,25 @@ def execute_instruction(formula, in_block_formula, instruction, reg_names, reg_b
             source_val = BitVecVal(0xffffffff, 64) & source_val
             
         if "ADD" in instruction.keyword:
-            constraints = target_reg_new_val == target_reg_old_val + source_val
+            constraints = target_reg_old_val + source_val
         elif "MOV" in instruction.keyword:
-            constraints = target_reg_new_val == source_val
+            constraints = source_val
         elif "LSH" in instruction.keyword:
-            constraints = target_reg_new_val == target_reg_old_val << instruction.input_value
+            constraints = target_reg_old_val << instruction.input_value
         elif "ARSH" in instruction.keyword:
-            constraints = target_reg_new_val == target_reg_old_val >> instruction.input_value
+            constraints = target_reg_old_val >> instruction.input_value
         elif "RSH" in instruction.keyword:
-            constraints = target_reg_new_val == LShR(target_reg_old_val, instruction.input_value)
+            constraints = LShR(target_reg_old_val, instruction.input_value)
         
         # The keyword isn't recognized, add a poision pill to force an unsat
         else:
             print("\n***  Keyword isn't a valid form for this program  ***")
             return poison_the_formula, reg_names
-            
+        
+        if instruction.bit_size == 32:
+            constraints = BitVecVal(0xffffffff, 64) & constraints
+        constraints = target_reg_new_val == constraints
+        
         reg_names[instruction.target_reg] = instruction.target_reg_new_name
         formula = And(formula, constraints)
         in_block_formula = And(in_block_formula, constraints)
@@ -278,75 +282,6 @@ def execute_instruction(formula, in_block_formula, instruction, reg_names, reg_b
     except Z3Exception:
         print("\n***  Attempting to execute instruction using an input value that doesn't fit in the register  ***")
         return poison_the_formula, False, reg_names
-    
-def translate_to_bpf_in_c(program_list):
-    """
-    Simplify the testing of a program in bpf_step using our current accessible keywords
-        and the libbpf.h functions.  No error checking added, assuming formating of input strings
-        is valid.
-        
-    This function will output a list of strings containing the translated versions ready to be
-        copied right into sock_example.c
-        
-    Example:
-        program_list =
-        	0:	movI64 4 1
-        	1:	movI64 3 2
-        	2:	addR 1 2
-        	3:	jneI64 5 2 2
-        	4:	addR 1 1
-        	5:	addI32 3 2
-        	6:	addR 1 2
-        	7:	addR 2 1
-        	8:	exit 0 0
-        
-        would print the following to the console:
-            
-            BPF_MOV64_IMM(BPF_REG_1, 4), BPF_MOV64_IMM(BPF_REG_2, 3), 
-            BPF_ALU64_REG(BPF_ADD, BPF_REG_2, BPF_REG_1), BPF_JMP_IMM(BPF_JNE, BPF_REG_2, 5, 2), 
-            BPF_ALU64_REG(BPF_ADD, BPF_REG_1, BPF_REG_1), BPF_ALU32_IMM(BPF_ADD, BPF_REG_2, 3), 
-            BPF_ALU64_REG(BPF_ADD, BPF_REG_2, BPF_REG_1), BPF_ALU64_REG(BPF_ADD, BPF_REG_1, BPF_REG_2), 
-            BPF_EXIT_INSN(), 
-    """    
-    output = ""
-    for instruction in program_list:
-        split_ins = instruction.split(" ")
-        keyword = split_ins[0]
-        value = split_ins[1]
-        target_reg = split_ins[2]
-        
-        if len(split_ins) == 3:
-        # Add Instuctions
-            if keyword == "addI32":
-                instruction = f'BPF_ALU32_IMM(BPF_ADD, BPF_REG_{target_reg}, {value})'
-            elif keyword == "addI64":
-                instruction = f'BPF_ALU64_IMM(BPF_ADD, BPF_REG_{target_reg}, {value})'
-            elif keyword == "addR":
-                instruction = f'BPF_ALU64_REG(BPF_ADD, BPF_REG_{target_reg}, BPF_REG_{value})'
-            
-        # Mov Instructions
-            elif keyword == "movI32" or keyword == "movI64":
-                instruction = f'BPF_MOV64_IMM(BPF_REG_{target_reg}, {value})'
-            elif keyword == "movR":
-                instruction = f'BPF_MOV64_REG(BPF_REG_{target_reg}, BPF_REG_{value})'
-
-        # Exit command
-            elif keyword == "exit":
-                instruction = "BPF_EXIT_INSN()"
-
-        # Format for jump commands
-        elif len(split_ins) == 4:
-            offset = int(split_ins[3])
-            
-            if keyword == "jmpI32" or keyword == "jmpI64":
-                instruction = f'BPF_JMP_IMM(BPF_JNE, BPF_REG_{target_reg}, {value}, {offset})'
-            elif keyword == "jmpR":
-                instruction = f'BPF_JMP_REG(BPF_JNE, BPF_REG_{target_reg}, BPF_REG_{value}, {offset})'
-        
-        output += instruction + ", "
-    output += "BPF_EXIT_INSN(),"
-    print("\nThis program would be written as the following for BPF in C:\n")        
-    print(output)
 
 def translate_smartnic_to_python_stars_comments(instruction_input):
     output = []
@@ -418,6 +353,7 @@ def create_program(instructions, num_regs = 4, reg_size = 8, inputs = []):
         print("\n--> Program Results <--")
         if tempz3.check() == sat:
             print("\tModel found the following results:")
+            print(tempz3.model())
             for reg_num, reg_name in enumerate(program.end_block.register_names_after_block_executes):
                 if reg_name != '0':
                     reg_name = program.register_bitVec_dictionary[reg_name].name
@@ -427,8 +363,6 @@ def create_program(instructions, num_regs = 4, reg_size = 8, inputs = []):
         else:
             print ("Model couldn't find a solution for the program: \n\tUNSATISFIABLE")      
     end_time = time.time()
-
-    # translate_to_bpf_in_c(instruction_list)
     
     # # Debug help to check the Basic Blocks inside the CFG
     # for node in program.block_graph:
@@ -439,5 +373,3 @@ def create_program(instructions, num_regs = 4, reg_size = 8, inputs = []):
     print('--> Time to make CFG: \t\t%0.3f seconds <--' %(graph_made-start_time))
     print('--> Time to create FOL: \t%0.3f seconds <--' %(formula_made-graph_made))
     print('--> Time to Evaluate: \t\t%0.3f seconds <--' %(end_time-formula_made))
-    
-        

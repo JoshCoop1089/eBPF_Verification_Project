@@ -47,12 +47,10 @@ for instruction in test_list_with_stars[4:]:
     tests_11_to_15.append(new_inst)
 # print(tests_11_to_15[0])
 
-# create_program(tests_1_to_4[2])
-# create_program(tests_11_to_15[2])
-for num, instruction in enumerate(tests_1_to_4, 1):
-    print("*"*20+f"\nInstruction Test #{num}\n")
-    create_program(instruction, 2, 64)
-for num, instruction in enumerate(tests_11_to_15, 11):
+# for num, instruction in enumerate(tests_1_to_4, 1):
+#     print("*"*20+f"\nInstruction Test #{num}\n")
+#     create_program(instruction, 2, 64)
+for num, instruction in enumerate(tests_11_to_15[1:2], 12):
     print("*"*20+f"\nInstruction Test #{num}\n")
     create_program(instruction, 2, 64)
 
@@ -63,7 +61,7 @@ Test 1:
                         18446744073709551614 (decimal)
                     
 Test 2:
-    Output:     r0 =    8589934590
+    Output:     r0 =    4294967294
     Expected:   r0 =    0xfffffffe; 
                         4294967294 (decimal)
                     
@@ -82,6 +80,8 @@ Test 11:
                         2147483647 (decimal)
 Test 12:
     Output:     r0 =    2147483647 (decimal)
+                        0x7fffffff (hex)
+                        
     Expected:   r0 =    0xffffffff (hex)
                         4294967295 (decimal)
                     
@@ -97,10 +97,9 @@ Test 15:
     Output:     r0 =    0
     Expected:   r0 =    0  
 
-Passed: 7
+Passed: 8
 Attempted: 9    
 
 Reasons for Failed Tests:
-    2) Doing an operation which requires utilizing the same register might cause a doubling problem?
     12) 
 """

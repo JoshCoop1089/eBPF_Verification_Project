@@ -71,6 +71,7 @@ class Instruction_Info:
         # Breaking a keyword into the parts needed to interpret it
         split_ins = instruction.split(" ")        
         self.keyword = split_ins[0]
+        self.bit_size = 64 if "64" in self.keyword else 32
         self.input_value, self.target_reg, self.offset = 0,0,0
         if len(split_ins) > 1:
             self.target_reg = int(split_ins[1])        
@@ -92,10 +93,10 @@ class Instruction_Info:
         else:    
             if "32XC" in self.keyword:
                 self.input_value_is_const = True
-                self.input_value_bitVec_Constant = extend_to_proper_bitvec(self.input_value, reg_bit_size)
+                self.input_value_bitVec_Constant = BitVecVal(self.input_value, reg_bit_size)
             elif "64XC" in self.keyword or "XC" in self.keyword:
                 self.input_value_is_const = True     
-                self.input_value_bitVec_Constant = BitVecVal(self.input_value, reg_bit_size)
+                self.input_value_bitVec_Constant = extend_to_proper_bitvec(self.input_value, reg_bit_size)
             else:
                 # print("current version of program treats 32 bit and 64 bit register commands as 64 bit")
                 self.input_value_is_const = False

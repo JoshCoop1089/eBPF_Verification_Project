@@ -63,7 +63,7 @@ Test 1:
                         18446744073709551614 (decimal)
                     
 Test 2:
-    Output:     r0 =    18446744073709551614
+    Output:     r0 =    8589934590
     Expected:   r0 =    0xfffffffe; 
                         4294967294 (decimal)
                     
@@ -72,21 +72,21 @@ Test 3:
     Expected:   r0 =    0
                     
 Test 4:
-    Output:     r0 =    0
+    Output:     r0 =    4294967297
     Expected:   r0 =    0x100000001:
                         4294967297 (decimal)
                     
 Test 11:
-    Output:     r0 =    9223372036854775807 (decimal)
+    Output:     r0 =    2147483647 (decimal)
     Expected:   r0 =    0x7fffffff (hex)
                         2147483647 (decimal)
 Test 12:
-    Output:     r0 =    18446744073709551615 (decimal)
+    Output:     r0 =    2147483647 (decimal)
     Expected:   r0 =    0xffffffff (hex)
                         4294967295 (decimal)
                     
 Test 13:
-    Output:     r0 =    18446744073709551615
+    Output:     r0 =    0
     Expected:   r0 =    0
                     
 Test 14:
@@ -94,17 +94,13 @@ Test 14:
     Expected:   r0 =    0
                     
 Test 15:
-    Output:     r0 =    18446744073709551615
+    Output:     r0 =    0
     Expected:   r0 =    0  
 
-Passed: 3
+Passed: 7
 Attempted: 9    
 
 Reasons for Failed Tests:
-    2) Using the lower thirty two bits of the register for the add
-    4) Moving in a 32 bit value and improperly sign extending it
-    11) RSH on the lower 32 bits not occuring properly
-    12) ARSH on the lower 32 bits not occuring properly
-    13) Moving in a 32 bit val and improperly sign extending it
-    15) Moving in a 32 bit val and improperly sign extending it
+    2) Doing an operation which requires utilizing the same register might cause a doubling problem?
+    12) 
 """

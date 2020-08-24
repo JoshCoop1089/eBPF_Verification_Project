@@ -238,15 +238,19 @@ def execute_instruction(formula, in_block_formula, instruction, reg_names, reg_b
         # Key error if register isn't live yet, but that's ok for an inital mov into a reg
         try:    
             target_reg_old_val = reg_bv_dic[reg_names[instruction.target_reg]].name
+            if instruction.bit_size == 32:
+                target_reg_old_val = BitVecVal(0xffffffff, 64) & target_reg_old_val
         except KeyError:
             if "MOV" in instruction.keyword:
                 pass
             else:
                 print("\n***  Attempting to execute instruction using non-initialized register  ***")
                 return poison_the_formula, False, reg_names
-
-        target_reg_new_val = reg_bv_dic[instruction.target_reg_new_name].name
         
+        target_reg_new_val = reg_bv_dic[instruction.target_reg_new_name].name
+        if instruction.bit_size == 32:
+            source_val = BitVecVal(0xffffffff, 64) & source_val
+            
         if "ADD" in instruction.keyword:
             constraints = target_reg_new_val == target_reg_old_val + source_val
         elif "MOV" in instruction.keyword:

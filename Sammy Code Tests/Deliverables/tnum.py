@@ -29,7 +29,7 @@ so that it's easier to translate back and forth between this and the source code
 from z3 import *
 
 #throughout the project we will assume every bitvector is of this length
-bitLength = 8
+bitLength = 4
 
 class tnum:
 
@@ -60,8 +60,8 @@ class tnum:
         
     #ACTION - does a logical shift left on both the min and the range of this tnum
     def lshift(self, i):
-        LShL(self.min, i)
-        LShL(self.range, i)
+        self.min <<= i
+        self.range <<= i
         
     #ACTION - does a logical shift right on both the min and the range of this tnum
     def rshift(self, i):
@@ -237,7 +237,7 @@ def hma(acc, value, mask):
     
     for i in range(0, bitLength):
         bit = z3.Extract(i, i, mask)
-
+        
         if(bit == BitVecVal(0, 1)):
             acc = tnum_add(acc, tnum(0, value))
 
@@ -252,17 +252,52 @@ def hma(acc, value, mask):
 #             #
 #             #
 
+"""
 solver = Solver()
 
-n1 = tnum(BitVecVal(4, bitLength), BitVecVal(0, bitLength))
-n2 = tnum(BitVecVal(2, bitLength), BitVecVal(0, bitLength))
+n1 = tnum(BitVecVal(12, bitLength), BitVecVal(0, bitLength))
+n2 = tnum(BitVecVal(4, bitLength), BitVecVal(0, bitLength))
 n3 = tnum(BitVec("n3_value", bitLength), BitVec("n3_range", bitLength))
 
-n4 = tnum(BitVec("n4_value", bitLength), BitVec("n4_range", bitLength))
-n5 = tnum(BitVecVal(16, bitLength), BitVecVal(0, bitLength))
+solver.add(n3.tnum_eq(n1.sub(n2)))
 
-solver.add(n5.tnum_eq(n1.mult(n4)))
 if solver.check() == sat:
    m = solver.model()
    print(m)
+#"""
 
+
+
+#clear solver
+solver = Solver()
+num1 = tnum(BitVec("num1", bitLength), BitVecVal(0, bitLength))
+num2 = tnum(BitVec("num2", bitLength), BitVecVal(0, bitLength))
+num3 = tnum(BitVec("num3", bitLength), BitVecVal(0, bitLength))
+
+t1 = tnum(BitVec("t1_value", bitLength), BitVec("t1_mask", bitLength))
+t2 = tnum(BitVec("t2_value", bitLength), BitVec("t2_mask", bitLength))
+t3 = tnum(BitVec("t3_value", bitLength), BitVec("t3_mask", bitLength))
+
+solver.add(t1.tnum_in(num1))
+solver.add(t2.tnum_in(num2))
+solver.add(Not(t3.tnum_in(num3)))
+
+#specific operation goes here
+solver.add(num3.tnum_eq(num1.sub(num2)))
+solver.add(t3.tnum_eq(t1.sub(t2)))
+
+#check
+if solver.check() == sat:
+    m = solver.model()
+    print(m)
+else:
+    print("The subtraction operation seems to work correctly.")
+
+#"""
+
+"""
+error?
+num1 = 108 = 01101100 = 44?
+num2 = 58 =  00111000 = 58?
+num3 = 120 = 10100110 = 36?
+"""

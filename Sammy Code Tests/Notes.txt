@@ -45,3 +45,29 @@ state [program, concrete(x)] should be within the symbolic state [program, symbo
 7/20:
 =====
 BPF_X has something to do with whether the source register is a variable (BPF_X?) or a constant (BPF_K?)
+
+8/10:
+=====
+https://networkx.github.io/documentation/networkx-1.10/reference/generated/networkx.algorithms.dominance.dominance_frontiers.html
+https://networkx.github.io/documentation/networkx-1.10/reference/generated/networkx.algorithms.dominance.immediate_dominators.html
+
+8/20:
+=====
+Report structure
+* introduction 
+* problem
+* context / background
+* precise problem statement
+* approach
+-- examples
+	> explain yourself here
+* results
+	positives: proofs, interpret, future work
+
+	pending issues
+* discussion
+	beyond the technical details
+	take a step back, what did you learn
+	personal reflection
+should be about 4-6 pages
+* source code

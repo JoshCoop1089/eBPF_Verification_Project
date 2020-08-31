@@ -76,3 +76,8 @@ Range analysis:
   > c = o(a,b)
 
   such that c is not in tnum_3
+
+8/13:
+ - Not much time left, start working on final wrap up deliverable
+ - Unravel multiplication
+ - Start looking at doing verification for BPF_ADD, say

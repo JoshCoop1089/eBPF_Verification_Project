@@ -7,16 +7,9 @@ Using tests from:
     https://github.com/smartnic/superopt/blob/master/src/isa/ebpf/inst_test.cc
 
 Tests 5 - 10 omitted due to endian conversions
-Tests 16 - 23 omitted due to map lookups and memory storage
-Tests 27,28 skipped due to memory reads
 
-What should be done if a jump instruction doesn't have an offset?
-
-Test14 has "inst(JSGTXY, 0, 1)," which has no offset
-
-Changed it to JSGTXY, 0, 1, 1 to have it match what the comments say it should do
-    IE added an offset of 1 to the instruction
-
+Outputs are for the 9/3/20 version of FOL_from_BPF
+Expected Results are from smartnic code
 """
 from FOL_from_BPF import *
 
@@ -36,21 +29,20 @@ test_list_with_stars = [instructions1, instructions2, instructions3, instruction
 tests_1_to_4 = []
 tests_11_to_15 = []
 
-
 for instruction in test_list_with_stars[:4]:
     new_inst = translate_smartnic_to_python_stars_comments(instruction)
     tests_1_to_4.append(new_inst)
-# print(tests_1_to_4)
+# print(tests_1_to_4[0])
 
 for instruction in test_list_with_stars[4:]:
     new_inst = translate_smartnic_to_python_stars_comments(instruction)
     tests_11_to_15.append(new_inst)
-# print(tests_11_to_15[0])
+# print(tests_11_to_15)
 
-# for num, instruction in enumerate(tests_1_to_4, 1):
-#     print("*"*20+f"\nInstruction Test #{num}\n")
-#     create_program(instruction, 2, 64)
-for num, instruction in enumerate(tests_11_to_15[1:2], 12):
+for num, instruction in enumerate(tests_1_to_4, 1):
+    print("*"*20+f"\nInstruction Test #{num}\n")
+    create_program(instruction, 2, 64)
+for num, instruction in enumerate(tests_11_to_15, 11):
     print("*"*20+f"\nInstruction Test #{num}\n")
     create_program(instruction, 2, 64)
 
@@ -101,5 +93,5 @@ Passed: 8
 Attempted: 9    
 
 Reasons for Failed Tests:
-    12) 
+    12) problems with arsh32 taking the front bit of the 64bit register value, not the 32 bit value
 """

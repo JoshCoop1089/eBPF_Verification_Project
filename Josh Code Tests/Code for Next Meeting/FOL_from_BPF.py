@@ -62,7 +62,7 @@ class Program_Holder:
         formula : TYPE : z3 Boolean formula
             A record of the full path taken through the program, after being updated by this block
         """
-        # Poision Pill for incorrect instruction, forcing unsat
+        # Poison Pill for incorrect instruction, forcing unsat
         a = Int('a')
         poison_the_formula = And(a == 2, a == 1)
         
@@ -125,8 +125,8 @@ def check_jump(formula, instruction, reg_names, reg_bv_dic):
     Currently supports:
         JNE(jump if not equal)
         JEQ (jump if equal)
-        JGT (jump if greater than or equal?)
-        JSGT (jump if strictly greater than?)
+        JGT (jump if greater than or equal)
+        JSGT (jump if greater than or equal (signed))
     
     Parameters
     ----------
@@ -190,11 +190,8 @@ def check_jump(formula, instruction, reg_names, reg_bv_dic):
 def execute_instruction(formula, in_block_formula, instruction, reg_names, reg_bv_dic, poison_the_formula):
     """
     Current Functions Supported:
-        mov
-        add
-        lsh
-        rsh
-        arsh
+        mov, add, lsh, rsh, arsh 
+        *** ARsh currently doesn't work in the 32 bit form, but does work in 64 bit ***
     
     Parameters
     ----------
@@ -287,10 +284,8 @@ def translate_smartnic_to_python_stars_comments(instruction_input):
     output = []
     reg_ex_ins = re.sub("/\*[^\*]+\*/", "", instruction_input.strip("{").strip("};").replace(" ", ""))
     reg_ex_ins= reg_ex_ins.split(", inst(")
-    # print(reg_ex_ins)
     for instruction in reg_ex_ins:
         split_ins = [instr.strip("inst(").replace(",", " ") for instr in instruction.split("),")]
-        # print(split_ins[:-1])
         return split_ins[:-1]         
    
 def get_runtime_parameters(inputs):
@@ -339,8 +334,6 @@ def create_program(instructions, num_regs = 4, reg_size = 8, inputs = []):
     formula = True
     while not program.program_error and block.output_links:
         block, formula = program.add_instructions_from_block(block, formula)
-        # if block.block_instructions[-1].keyword == "EXIT":
-        #     break
     if not program.program_error:
         block, formula = program.add_instructions_from_block(block, formula)
         program.formula = formula
@@ -353,7 +346,7 @@ def create_program(instructions, num_regs = 4, reg_size = 8, inputs = []):
         print("\n--> Program Results <--")
         if tempz3.check() == sat:
             print("\tModel found the following results:")
-            print(tempz3.model())
+            # print(tempz3.model())
             for reg_num, reg_name in enumerate(program.end_block.register_names_after_block_executes):
                 if reg_name != '0':
                     reg_name = program.register_bitVec_dictionary[reg_name].name

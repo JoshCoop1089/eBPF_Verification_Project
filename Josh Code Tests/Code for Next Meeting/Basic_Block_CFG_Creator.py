@@ -1,12 +1,5 @@
 # -*- coding: utf-8 -*-
 """
-Created on Sat Aug 15 19:39:17 2020
-
-@author: joshc
-"""
-
-# -*- coding: utf-8 -*-
-"""
 Created on Mon Aug 10 16:07:01 2020
 
 @author: joshc
@@ -36,7 +29,7 @@ Assumptions about instruction links:
         1) Directly forward (all instructions link to the next one)
         2) Jump offset to a future instruction (found in the Instruction_Info.offset value)
 """
-import copy, bitstring
+import copy
 import networkx as nx
 from z3 import *
 
@@ -56,8 +49,10 @@ class Instruction_Info:
         ----------
         instruction : TYPE : String
             String literal holding the instruction in specific keyword form
+            
         number : TYPE : Int
             Instruction number from program order
+            
         reg_bit_size : TYPE : Int
             How big the bitVector objects need to be to model our registers
 
@@ -82,14 +77,15 @@ class Instruction_Info:
                 except Exception:
                     pass
 
-        
         # Defining how to treat self.input_value (as a constant, or register location)
         if self.input_value > 2 ** (reg_bit_size - 1) - 1 or \
                         self.input_value < -1 * (2 ** (reg_bit_size - 1)):
             self.input_value_is_const = True
+            
             # Poision Pill for input size being too large, forcing unsat
             a = Int('a')
             self.input_value_bitVec_Constant = And(a == 2, a == 1)
+            
         else:    
             if "32XC" in self.keyword:
                 self.input_value_is_const = True
@@ -98,7 +94,6 @@ class Instruction_Info:
                 self.input_value_is_const = True     
                 self.input_value_bitVec_Constant = extend_to_proper_bitvec(self.input_value, reg_bit_size)
             else:
-                # print("current version of program treats 32 bit and 64 bit register commands as 64 bit")
                 self.input_value_is_const = False
                 self.input_value_bitVec_Constant = False
             
@@ -112,6 +107,7 @@ class Instruction_Info:
         print(f'Instruction {self.instruction_number}: {self.full_instruction}')
         # print(f'Source: {self.input_value}\tTarget: {self.target_reg}')
         return ""  
+    
 def get_input_value(instruction_string):
     input_value = 0
     if "0x" in instruction_string:
@@ -124,7 +120,6 @@ def get_input_value(instruction_string):
     else:
         input_value = int(instruction_string) 
     return input_value    
-
 
 # Extending half sized constant inputs to be register sized (assuming no one tries to use odd sized registers)
 def extend_to_proper_bitvec(value, reg_size):
@@ -188,8 +183,8 @@ class Basic_Block:
             self.output_links.append(end_of_edge)
 
         # # **************************************
-        # # Depending on if I actually need to implement phi functions, the following could be deleted
-        # # For use in naming any phi functions the block requires
+        # # Phi function stuff
+        # # For use in naming any phi function registers
         # self.block_ID = str(instruction_chunk[0])
         # # Identifying what registers need new SSA names in a block
         # self.variables_changed_in_block = set()
@@ -236,12 +231,12 @@ class Basic_Block:
             copy.deepcopy(block.register_names_after_block_executes)     
         # print(f'New Starting Names are now: {self.register_names_before_block_executes}')
 
-    # Do I need these two functions? Phi Function Questions
+    # # Phi Function Stuff
     # def create_phi_function_register_names(self):
     #     for register_number in self.phi_functions:
     #         reg_name = f'r{register_number}_Block_{self.block_ID}_phi'
     #         self.phi_function_named_registers.append(reg_name)  
-    
+    # 
     # def get_reg_names_for_beginning_of_block(self, block_graph):
     #     if self.block_ID == '0':
     #         self.register_names_before_block_executes = \
@@ -249,7 +244,7 @@ class Basic_Block:
     #     else:
     #         previous_blocks =[block for block in block_graph.predecessors(self)]
     #         self.register_names_before_block_executes = copy.deepcopy(previous_blocks[0].register_names_after_block_executes)
-    
+    # 
     #         # Block needs a phi function definition
     #         for reg_number in self.phi_functions:
     #             reg_name = [name for name in self.phi_function_named_registers if f'r{reg_number}' in name]
@@ -426,15 +421,14 @@ def set_up_basic_block_cfg(instruction_list, reg_size, num_regs):
     
     instruction_graph = extract_all_edges_from_instruction_list(instruction_list)
     
-    # Actual creation of the basic block CFG happens here!
+    # Actual creation of the basic block CFG
     block_list_chunks = identify_the_instructions_in_basic_blocks(instruction_list)
     block_list = []
     for block_chunk in block_list_chunks:     
         block_list.append(Basic_Block(num_regs, block_chunk, instruction_list, instruction_graph))
     block_graph = set_edges_between_basic_blocks(block_list)
 
-    # Visualization options for the graphs, only show connections, haven't figured
-        # out how to make the nodes be named in the output picture yet
+    # Visualization options for the graphs (both instructions and blocks)  
     # nx.draw_planar(instruction_graph,  with_labels = True)
     # block_labels = {node:node.name for node in block_graph}
     # nx.draw_planar(block_graph, labels = block_labels, with_labels = True)
@@ -518,12 +512,9 @@ def basic_block_CFG_and_phi_function_setup(instruction_list, reg_size, num_regs)
     block_list[0] : TYPE : Basic_Block object
         The starting block of the graph, so we don't have to find it again
     """    
-    # Commented out all of the things I had done involving phi functions, as I think I found a
-        # way around calculating their positions and using them as bridging variables.
-        # Will require confirmation that my method is not just a quirk of my test cases.
-    
     block_graph, register_bitVec_dictionary, start_block = set_up_basic_block_cfg(instruction_list, reg_size, num_regs)
 
+    # Commented out all of the things I had done involving phi functions
     # Generate the locations of phi functions, name them, and create the register bit vec objects for reference.  
     # block_graph = phi_function_locations(block_graph, start_block)
     # for block in block_graph:
